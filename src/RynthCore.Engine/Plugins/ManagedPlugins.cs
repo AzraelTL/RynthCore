@@ -253,6 +253,16 @@ internal static class ManagedPlugins
 
         protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
         {
+            // ImGui.NET's "cimgui" is the engine's own module (RynthCore.cimgui.dll), so a plugin draws in
+            // the engine's ImGui and whatever context it has current, a pop-out's included. Each plugin's
+            // own ImGui.NET used to reach a second cimgui.dll whose current context stayed the main one:
+            // a section drawn in a popped-out Mini Remote ran outside any frame and faulted in native code,
+            // killing the client (RynthDreamWeave's server card, 2026-10-19). Found and fixed by
+            // SilentKelpie (rynth PR #6); re-implemented here.
+            if (EntryPoint.ImGuiNativeHandle != IntPtr.Zero
+                && (unmanagedDllName.Equals("cimgui", StringComparison.OrdinalIgnoreCase)
+                    || unmanagedDllName.Equals("cimgui.dll", StringComparison.OrdinalIgnoreCase)))
+                return EntryPoint.ImGuiNativeHandle;
             string? path = Pick(unmanagedDllName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
                 ? unmanagedDllName
                 : unmanagedDllName + ".dll");
