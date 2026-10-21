@@ -51,8 +51,9 @@ internal sealed class ChatFace : IImGuiPanel
 {
     public const string Title = "Chat";
 
-    // The channel tabs live in a drawer on the window's left edge (Tom 2026-10-09: the
-    // wrapped tab rows took too much room), the way the dashboard's ranges do.
+    // The channel tabs live in a drawer on the window's left edge (2026-10-09: the wrapped
+    // tab rows took too much room), the way the dashboard's ranges do; "Tabs across the
+    // top" (ChatModel.TabsAcross, 2026-10-20) puts the row back for those who want it.
     private readonly ChannelsDrawer _channels;
     private readonly DashboardDrawers _drawers;
     private bool _openTabsPopup;
@@ -176,7 +177,15 @@ internal sealed class ChatFace : IImGuiPanel
         string tab = ChatModel.CurrentTab();
         UpdateUnread(lines, snap?.Version ?? -1, tab);
 
-        float y = DrawHeader(new Vector2(x0, origin.Y + 4), w);
+        bool across = ChatModel.TabsAcross;
+        float y;
+        if (across)
+        {
+            y = DrawTabStrip(new Vector2(x0, origin.Y + 4), w);
+            DrawSearch(new Vector2(x0, y), w);
+            y += 26;
+        }
+        else y = DrawHeader(new Vector2(x0, origin.Y + 4), w);
 
         SyncLines(snap, lines, tab);
 
@@ -194,7 +203,7 @@ internal sealed class ChatFace : IImGuiPanel
         ImGuiNET.ImGui.PopStyleVar();
         DrawPopups();
         ImGuiNET.ImGui.PopFont();
-        _drawers.Draw();   // last: its own window, placed against this one
+        if (!across) _drawers.Draw();   // last: its own window, placed against this one
     }
 
     // ── Tabs ─────────────────────────────────────────────────────────────
@@ -258,6 +267,58 @@ internal sealed class ChatFace : IImGuiPanel
         float sx = start.X + bw + 4, sw = right - gearW - filtW - 7 - sx;
         if (sw > 40) DrawSearch(new Vector2(sx, start.Y), sw);
         return start.Y + h + 4;
+    }
+
+    /// <summary>
+    /// "Tabs across the top" (ChatModel.TabsAcross): every tab in a row that wraps left of
+    /// Filters and the gear, as before the drawer; right-click a tab to rename or delete it,
+    /// + adds one. Returns the y below the strip.
+    /// </summary>
+    private float DrawTabStrip(Vector2 start, float w)
+    {
+        const float h = 20;
+        var dl = ImGuiNET.ImGui.GetWindowDrawList();
+        float gearW = 22, filtW = 22, right = start.X + w;
+        if (IconButton("##chat_gear", PhosphorIcons.Gear, new Vector2(right - gearW, start.Y), new Vector2(gearW, h), Text, BtnFill))
+            _openSettings = true;
+        ImGuiNET.ImGui.SetItemTooltip("Chat settings");
+        if (IconButton("##chat_filters", PhosphorIcons.Funnel, new Vector2(right - gearW - 3 - filtW, start.Y), new Vector2(filtW, h), Text, BtnFill))
+            PanelRouter.Toggle("ChatFilters");
+        ImGuiNET.ImGui.SetItemTooltip("Filters: move, copy or hide lines by regex, and colour them");
+
+        float stripRight = right - gearW - filtW - 8;
+        float x = start.X, y = start.Y;
+        string current = ChatModel.CurrentTab();
+        foreach (string tab in ChatModel.AllTabs())
+        {
+            bool active = string.Equals(tab, current, StringComparison.OrdinalIgnoreCase);
+            _unread.TryGetValue(tab, out var unread);
+            string? badge = !active && unread.Count > 0 ? (unread.Count > 99 ? "99+" : unread.Count.ToString()) : null;
+            float badgeW = badge != null ? BadgeWidth(badge) : 0;
+            float textW = ImGuiNET.ImGui.CalcTextSize(tab).X;
+            float bw = textW + 12 + (badge != null ? badgeW + 3 : 0);
+            if (x > start.X && x + bw > stripRight) { x = start.X; y += h + 2; }
+            ImGuiNET.ImGui.PushID(tab);
+            var p = new Vector2(x, y);
+            if (Button("##tab", "", p, new Vector2(bw, h), Text, active ? TabActive : BtnFill))
+                ChatModel.SelectTab(tab);
+            if (ImGuiNET.ImGui.IsItemClicked(ImGuiMouseButton.Right)) { _ctxTab = tab; _openTabMenu = true; }
+            if (unread.Mention && !active) ImGuiNET.ImGui.SetItemTooltip("Someone mentioned you here");
+            else if (!ChatModel.IsBaseTab(tab)) ImGuiNET.ImGui.SetItemTooltip("Right-click to rename or delete this tab");
+            dl.AddText(new Vector2(x + 6, y + (h - ImGuiNET.ImGui.GetFontSize()) * 0.5f), Text, tab);
+            if (badge != null) DrawBadge(dl, new Vector2(x + 6 + textW + 3, y + 4), badgeW, h - 8, badge, unread.Mention);
+            ImGuiNET.ImGui.PopID();
+            x += bw + 2;
+        }
+        if (x > start.X && x + 18 > stripRight) { x = start.X; y += h + 2; }
+        if (IconButton("##chat_addtab", PhosphorIcons.Plus, new Vector2(x, y), new Vector2(18, h), TabAdd, BtnFill, font: UiFont.Ui11))
+        {
+            _pendingRule = null;
+            WriteUtf8(_newTab, "");
+            _openNewTab = _focusNewTab = true;
+        }
+        ImGuiNET.ImGui.SetItemTooltip("New tab (fill it with a rule: right-click a line, or Filters)");
+        return y + h + 4;
     }
 
     private static float BadgeWidth(string badge)
@@ -1102,6 +1163,15 @@ internal sealed class ChatFace : IImGuiPanel
             "About 2 MB of memory per 1000 lines. Lowering it drops the oldest lines.");
         ImGuiNET.ImGui.PopItemWidth();
 
+        bool across = ChatModel.TabsAcross;
+        if (ImGuiNET.ImGui.Checkbox("Tabs across the top", ref across))
+        {
+            ChatModel.TabsAcross = across;
+            if (across) _drawers.Close(_channels);
+            ChatModel.SaveSettings();
+        }
+        ImGuiNET.ImGui.SetItemTooltip("On: every tab in a row across the top, with search under it.\n" +
+            "Off: one channel button that opens the tabs in a drawer beside the chat.");
         bool ts = ChatModel.ShowTimestamps;
         if (ImGuiNET.ImGui.Checkbox("Timestamps", ref ts))
         {

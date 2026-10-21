@@ -143,6 +143,7 @@ internal sealed partial class RynthAiFace : IImGuiPanel
         get
         {
             float k = SizeFactor();
+            if (RynthAiDashboardState.Classic) return _classic.MinSize(k);
             return new Vector2(MinWidth * k, _contentHeight > 0 ? _contentHeight
                 : (RynthAiDashboardState.Minimized ? 54 : 180) * k);
         }
@@ -154,6 +155,7 @@ internal sealed partial class RynthAiFace : IImGuiPanel
         UiSources.RynthSortWatch.Subscribe();   // the Sort toggle, while RynthSort is loaded
         UiSources.RynthAi.RequestRefresh();
         _fit = true; // drop the empty space a taller saved size leaves under the content
+        _drewClassic = false;
     }
 
     public void OnHidden()
@@ -162,12 +164,55 @@ internal sealed partial class RynthAiFace : IImGuiPanel
         UiSources.RynthSortWatch.Unsubscribe();
         if (_patrolOpen) { UiSources.Patrol.Unsubscribe(); _patrolOpen = false; }
         _drawers.Detach();
+        if (_drewClassic) _classic.OnHidden();
+        _drewClassic = false;
+    }
+
+    // ── The Classic look (ImGui/Panels/Classic): drawn instead of the dashboard while it's on ──
+    private readonly Classic.ClassicDashboard _classic = new();
+    private bool _drewClassic;
+    // The dashboard's own size (logical px) while the Classic look is showing, put back when it ends.
+    private static Vector2 _modernSize;
+
+    /// <summary>
+    /// Switches the dashboard between its Modern (compact) and Classic (retail) looks: the title bar
+    /// buttons of either look and Settings > Display. The window refits on the next frame. AC thread.
+    /// </summary>
+    internal static void SwitchLook(bool classic) => RynthAiDashboardState.SetClassic(classic);
+
+    /// <summary>The Classic look's frame; false when the Modern dashboard draws.</summary>
+    private bool DrawClassic(RynthAiView? view, RynthAiSnapshot raw)
+    {
+        if (!RynthAiDashboardState.Classic)
+        {
+            if (_drewClassic)
+            {
+                // Back from Classic: the dashboard's size as it was, then fit to its content.
+                _drewClassic = false;
+                _classic.OnHidden();
+                if (_modernSize.X > 0 && !ImGuiPopOuts.InPopOutFrame) ImGuiPanelHost.RequestSize(Title, _modernSize);
+                _fit = true;
+            }
+            return false;
+        }
+        if (!_drewClassic)
+        {
+            _drewClassic = true;
+            _drawers.Detach();
+            float place = Math.Max(0.01f, ImGuiPanelHost.PlacementScale());
+            _modernSize = ImGuiNET.ImGui.GetWindowSize() / place;
+            _classic.OnShown();
+        }
+        _k = PanelTextScale.Factor(ImGuiFonts.CurrentStep);
+        _classic.Draw(view, raw, _k);
+        return true;
     }
 
     public void Draw()
     {
         RynthAiView? view = UiSources.RynthAi.Current?.Value;
         RynthAiSnapshot raw = view?.Raw ?? Empty;
+        if (DrawClassic(view, raw)) return;
         bool minimized = RynthAiDashboardState.Minimized;
         bool popped = ImGuiPopOuts.InPopOutFrame;
         _view = view;
@@ -271,7 +316,7 @@ internal sealed partial class RynthAiFace : IImGuiPanel
     {
         var dl = ImGuiNET.ImGui.GetWindowDrawList();
         float y = ImGuiNET.ImGui.GetCursorScreenPos().Y;
-        const int chips = 7;
+        const int chips = 8;
         float chipW = Px(18), chipH = Px(16), chipGap = Px(2), chipRound = Px(2);
         float chipsW = chips * chipW + (chips - 1) * chipGap;
         float rowH = Px(20);
@@ -340,6 +385,10 @@ internal sealed partial class RynthAiFace : IImGuiPanel
         if (IconButton("##chip_plus", new Vector2(cx, cy), chip, PhosphorIcons.Plus, chipFont, BtnFill, Mute, BtnBord, chipRound))
             RynthAiCommands.AdjustOpacity(0.1f);
         ImGuiNET.ImGui.SetItemTooltip("More opaque");
+        cx += chipW + chipGap;
+        if (IconButton("##chip_classic", new Vector2(cx, cy), chip, PhosphorIcons.Scroll, chipFont, BtnFill, Mute, BtnBord, chipRound))
+            SwitchLook(classic: true);
+        SafeImGui.SetItemTooltip("Classic look: the retail-style window with tabs\n(Main, Monsters, Gear, Buffs, Route, Loot, Meta, Tuning).");
         cx += chipW + chipGap;
         if (IconButton("##chip_min", new Vector2(cx, cy), chip,
                 minimized ? PhosphorIcons.ArrowsOutLineVertical : PhosphorIcons.ArrowsInLineVertical, chipFont, BtnFill, Mute, BtnBord, chipRound))

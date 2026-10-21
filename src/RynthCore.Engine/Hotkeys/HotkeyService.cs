@@ -499,6 +499,9 @@ internal static class HotkeyService
     {
         _capturing = false;
         _captured = null;
-        Tracker.Reset();
+        // Not Tracker.Reset(): the tracker is AC's main thread only, and shutdown runs on the loader's
+        // reload thread while the window procedure can still be in it. The tracker belongs to this
+        // engine generation and goes with it; the next one starts with its own. (A reload died here,
+        // a write through a bad pointer on the ReloadWatcher thread, 2026-10-20.)
     }
 }

@@ -327,7 +327,7 @@ internal sealed class ArrowReadout
             _distKey = key;
             Line2 = RynthNavStatus.Yards(Distance) + "  " + _compass;
         }
-        if (TryHeading(out float heading))
+        if (PlayerPhysicsHooks.TryGetPlayerCompassSnapshot(out float heading))
         {
             Relative = (float)bearing - heading;
             Pointing = true;
@@ -355,16 +355,4 @@ internal sealed class ArrowReadout
 
     private static Vector2 Rot(Vector2 c, float x, float y, float s, float co) =>
         new(c.X + x * co - y * s, c.Y + x * s + y * co);
-
-    /// <summary>Your heading this frame (compass degrees) from the pose snapshot; no AC call (SenseFace's way).</summary>
-    private static bool TryHeading(out float heading)
-    {
-        heading = 0;
-        if (!PlayerPhysicsHooks.TryGetPlayerPoseSnapshot(out _, out _, out _, out _, out float qw, out float qz, out bool valid, out float h))
-            return false;
-        if (valid) { heading = h; return true; }
-        double yaw = 2.0 * Math.Atan2(qz, qw) * (180.0 / Math.PI);
-        heading = (float)((-yaw % 360.0 + 720.0) % 360.0);
-        return true;
-    }
 }

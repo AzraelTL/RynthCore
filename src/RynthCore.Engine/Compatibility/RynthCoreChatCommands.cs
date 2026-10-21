@@ -350,6 +350,15 @@ internal static class RynthCoreChatCommands
             return true;
         }
 
+        // /rc dashboard [classic|modern|tab <name>] : the RynthAi dashboard's look (the title bar buttons and
+        // Settings > Display), and the Classic look's tab (main, monsters, gear, buffs, route, loot, meta,
+        // tuning); either opens the dashboard. No argument: says which look is on.
+        if (IsVerb(sub, "dashboard", out string dashArgs))
+        {
+            DashboardCommand(dashArgs.Trim());
+            return true;
+        }
+
         // /rc miniremote [show|hide|toggle|tab <tab>|section <id>] : the ImGui Mini Remote panel, like
         // its bar button (RynthAi's dashboard and "/ra hub" use show / hide). "tab" opens it on one of
         // its tabs (RynthAi's pets, crafting; RynthILT's gear, games; none = the remote). Quests are
@@ -1025,6 +1034,32 @@ internal static class RynthCoreChatCommands
     {
         if (show == null || show.Value != ImGuiBackend.ImGuiPanelHost.IsOpen(title))
             UI.PanelRouter.Toggle(title);
+    }
+
+    private static readonly string[] ClassicTabNames = { "main", "monsters", "gear", "buffs", "route", "loot", "meta", "tuning" };
+
+    /// <summary>"/rc dashboard [classic|modern|tab &lt;name&gt;]": the RynthAi dashboard's look and the Classic look's tab.</summary>
+    private static void DashboardCommand(string args)
+    {
+        string title = ImGuiBackend.Panels.RynthAiFace.Title;
+        string usage = "Usage: /rc dashboard classic|modern|tab <" + string.Join("|", ClassicTabNames) + ">";
+        if (args.Length == 0)
+        {
+            Reply("The RynthAi dashboard's look is " + (UI.RynthAiDashboardState.Classic ? "Classic" : "Modern") + ". " + usage);
+            return;
+        }
+        if (IsVerb(args, "tab", out string tab))
+        {
+            int i = Array.FindIndex(ClassicTabNames, n => n.Equals(tab.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (i < 0) { Reply(usage); return; }
+            UI.RynthAiDashboardState.SetClassicTab(i);
+            ImGuiBackend.Panels.RynthAiFace.SwitchLook(classic: true);
+        }
+        else if (args.Equals("classic", StringComparison.OrdinalIgnoreCase)) ImGuiBackend.Panels.RynthAiFace.SwitchLook(classic: true);
+        else if (args.Equals("modern", StringComparison.OrdinalIgnoreCase)) ImGuiBackend.Panels.RynthAiFace.SwitchLook(classic: false);
+        else { Reply(usage); return; }
+        if (ImGuiBackend.ImGuiPanelHost.HasFace(title) && !ImGuiBackend.ImGuiPanelHost.IsOpen(title))
+            ImGuiBackend.ImGuiPanelHost.Open(title);
     }
 
     /// <summary>"/rc bounties|guardian [show|hide|toggle]": one of the ILT section's panels.</summary>

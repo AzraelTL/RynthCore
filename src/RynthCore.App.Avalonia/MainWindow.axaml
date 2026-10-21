@@ -316,7 +316,7 @@
               <Border Background="#132028" CornerRadius="16" Padding="18">
                 <StackPanel Spacing="8">
                   <TextBlock Text="Plugins" FontSize="16" FontWeight="SemiBold" Foreground="#26C1A6" />
-                  <TextBlock Text="The plugins RynthCore loads. Untick one to skip it; the X takes it out of the list (its files stay on disk). RynthSuite plugins you don't have are under Available plugins below; Add Plugin is for any other plugin DLL."
+                  <TextBlock Text="The plugins RynthCore loads. Untick one to skip it; the X takes it out of the list (its files stay on disk). RynthSuite plugins you don't have are under Available plugins below; plugins for one game server are on the Server plugins tab. Add Plugin is for any other plugin DLL."
                              TextWrapping="Wrap"
                              Foreground="#9AA8B3" />
                   <StackPanel x:Name="PluginLoadoutPanel" Spacing="10" />
@@ -331,6 +331,36 @@
                              TextWrapping="Wrap"
                              Foreground="#9AA8B3" />
                   <StackPanel x:Name="AvailablePluginsPanel" Spacing="10" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <!-- Server plugins: one per game server, kept apart from the regular plugins. RynthCore loads
+             one only when you connect to its server, so installing several costs nothing elsewhere. -->
+        <TabItem x:Name="ServerPluginsTab" Header="Server plugins">
+          <ScrollViewer>
+            <StackPanel Spacing="12" Margin="6">
+              <Border Background="#132028" CornerRadius="16" Padding="18">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Your server plugins" FontSize="16" FontWeight="SemiBold" Foreground="#26C1A6" />
+                  <TextBlock Text="Extras for one game server each. RynthCore loads a server plugin only when you connect to its server; everywhere else it stays off. Untick one to skip it; the X takes it out of the list (its files stay on disk)."
+                             TextWrapping="Wrap"
+                             Foreground="#9AA8B3" />
+                  <TextBlock x:Name="ServerPluginsEmptyText" Text="No server plugins installed."
+                             Foreground="#6F7F8A" IsVisible="False" />
+                  <StackPanel x:Name="ServerPluginLoadoutPanel" Spacing="10" />
+                </StackPanel>
+              </Border>
+              <Border Background="#132028" CornerRadius="16" Padding="18">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Available server plugins" FontSize="16" FontWeight="SemiBold" Foreground="#26C1A6" />
+                  <TextBlock x:Name="AvailableServerPluginsHint"
+                             Text="Server plugins you can add appear here after the first update check."
+                             TextWrapping="Wrap"
+                             Foreground="#9AA8B3" />
+                  <StackPanel x:Name="AvailableServerPluginsPanel" Spacing="10" />
                 </StackPanel>
               </Border>
             </StackPanel>

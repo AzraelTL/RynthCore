@@ -1,3 +1,4 @@
+using RynthCore.Engine.Compatibility;
 using RynthCore.Engine.UI.Data;
 
 namespace CharactersPanelTests;
@@ -25,6 +26,7 @@ internal static class Program
         Stale();
         StableOrder();
         Vitals();
+        HeadingIsCompass();
 
         Console.WriteLine($"{_checks} checks, {_failed} failed");
         return _failed == 0 ? 0 : 1;
@@ -247,5 +249,24 @@ internal static class Program
         Check(CharactersModel.VitalText(300, 400) == "300/400", "vital text");
         Check(Near(CharactersModel.Fraction(300, 400), 0.75), "fraction");
         Check(CharactersModel.Fraction(5, 0) == 0 && CharactersModel.Fraction(500, 400) == 1, "fraction clamps");
+    }
+
+    // The row arrows draw bearing - heading, so the heading must be a compass one. Freya,
+    // 2026-10-20: the quaternion said 13.9 (NNE), GetPlayerHeading 76.1 (= 90 - 13.9); the
+    // arrows used 76.1 and pointed 62 degrees off.
+    private static void HeadingIsCompass()
+    {
+        static (float qw, float qz) Facing(double compass) =>
+            ((float)Math.Cos(-compass * Math.PI / 360.0), (float)Math.Sin(-compass * Math.PI / 360.0));
+        var (fw, fz) = Facing(13.944);
+        Check(Near(HeadingMath.CompassFromYaw(fw, fz), 13.944, 0.01), "Freya's quaternion reads 13.9 (NNE)");
+        foreach (double h in new[] { 0.0, 45.0, 90.0, 180.0, 270.0, 359.0 })
+        {
+            var (qw, qz) = Facing(h);
+            Check(Near(HeadingMath.CompassFromYaw(qw, qz), h, 0.01), $"compass {h} round-trips through TurnToHeading's quaternion");
+        }
+        var (nw, nz) = Facing(90);   // facing east
+        Check(Near(180.0 - HeadingMath.CompassFromYaw(nw, nz), 90, 0.01), "facing east, a target due south is 90 degrees to the right");
+        Check(Near(HeadingMath.CompassFromYaw(-fw, -fz), 13.944, 0.01), "the same rotation with a negated quaternion");
     }
 }

@@ -324,15 +324,11 @@ internal sealed class CharactersFace : IImGuiPanel
     private static Vector2 Rot(Vector2 c, float x, float y, float s, float co) =>
         new(c.X + x * co - y * s, c.Y + x * s + y * co);
 
-    /// <summary>Your heading this frame (compass degrees) from the pose snapshot; no AC call (SenseFace's way).</summary>
+    /// <summary>Your compass heading this frame from the pose snapshot's quaternion; no AC call (SenseFace's way).</summary>
     private static float PlayerHeading(out bool ok)
     {
-        ok = PlayerPhysicsHooks.TryGetPlayerPoseSnapshot(out _, out _, out _, out _, out float qw, out float qz,
-            out bool headingValid, out float heading);
-        if (!ok) return 0;
-        if (headingValid) return heading;
-        double yaw = 2.0 * Math.Atan2(qz, qw) * (180.0 / Math.PI);
-        return (float)((-yaw % 360.0 + 720.0) % 360.0);
+        ok = PlayerPhysicsHooks.TryGetPlayerCompassSnapshot(out float heading);
+        return heading;
     }
 
     // ── Right-click menu ────────────────────────────────────────────────

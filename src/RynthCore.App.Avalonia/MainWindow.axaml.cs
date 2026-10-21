@@ -405,18 +405,22 @@ internal partial class MainWindow : Window
             checkBox.IsCheckedChanged += (_, _) => OnPluginSelectionChanged(plugin, checkBox);
             _pluginChecks[plugin.Id] = checkBox;
 
-            PluginLoadoutPanel.Children.Add(BuildPluginCard(checkBox, plugin.Summary, null));
+            PluginLoadoutPanel.Children.Add(BuildPluginCard(checkBox, plugin.Summary, null, null));
         }
 
         var disabledSet = new HashSet<string>(
             _settings.DisabledPluginDllPaths ?? new List<string>(),
             StringComparer.OrdinalIgnoreCase);
 
+        ServerPluginLoadoutPanel.Children.Clear();
         foreach (string dllPath in _pluginDllPaths)
         {
             string capturedPath = dllPath;
-            string pluginName = Path.GetFileNameWithoutExtension(dllPath);
+            // "RynthAi", what it does and its folder - not "RynthCore.Plugin.RynthAi" over the DLL's full path.
+            string pluginName = PluginNames.Friendly(dllPath);
             string pluginVersion = BuildVersion.OfFile(dllPath);
+            KnownServer? server = PluginNames.ServerOf(dllPath);
+            string about = DescribeInstalled(dllPath, server);
 
             var checkBox = new CheckBox
             {
@@ -425,7 +429,8 @@ internal partial class MainWindow : Window
             };
             checkBox.IsCheckedChanged += (_, _) => OnUserPluginEnabledChanged(capturedPath, checkBox);
 
-            PluginLoadoutPanel.Children.Add(BuildPluginCard(checkBox, capturedPath, () =>
+            StackPanel target = server != null ? ServerPluginLoadoutPanel : PluginLoadoutPanel;
+            target.Children.Add(BuildPluginCard(checkBox, about, Path.GetDirectoryName(capturedPath) ?? capturedPath, () =>
             {
                 // Out of the list (and out of the disabled list, so adding it back starts it
                 // enabled). The files stay where they are.
@@ -439,8 +444,23 @@ internal partial class MainWindow : Window
                 RefreshUpdateCard();
             }));
         }
+        ServerPluginsEmptyText.IsVisible = ServerPluginLoadoutPanel.Children.Count == 0;
 
         BuildAvailablePlugins();
+    }
+
+    /// <summary>
+    /// One line about an installed plugin: the update feed's description (or the launcher's own line) for a
+    /// RynthSuite plugin; for a server plugin its server and what that server is; otherwise nothing.
+    /// </summary>
+    private string DescribeInstalled(string dllPath, KnownServer? server)
+    {
+        RynthUpdater.PluginEntry? e = _updateCheck?.Manifest.Plugins.FirstOrDefault(p =>
+            string.Equals(p.File, Path.GetFileName(dllPath), StringComparison.OrdinalIgnoreCase));
+        string feed = e != null ? RynthUpdater.DescribePlugin(e) : RynthUpdater.DescribeByName(PluginNames.Friendly(dllPath));
+        if (server == null) return feed;
+        string forServer = $"For {server.Name} ({server.Address}): {server.Note}";
+        return feed.Length > 0 && !feed.Contains(server.Name, StringComparison.OrdinalIgnoreCase) ? $"{forServer} {feed}" : forServer;
     }
 
     // ── Available plugins (feed plugins not in the list) ──────────────────────
@@ -450,23 +470,36 @@ internal partial class MainWindow : Window
     private void BuildAvailablePlugins()
     {
         AvailablePluginsPanel.Children.Clear();
+        AvailableServerPluginsPanel.Children.Clear();
         _available = _updateCheck == null ? new() : _updater.GetAvailable(_updateCheck, _pluginDllPaths);
         if (_updateCheck == null)
         {
-            AvailablePluginsHint.Text = _updater.IsConfigured
+            string none = _updater.IsConfigured
                 ? "Plugins you can add appear here after the first update check."
                 : "Updates aren't set up in this build, so there is no plugin list to install from.";
+            AvailablePluginsHint.Text = none;
+            AvailableServerPluginsHint.Text = none.Replace("Plugins you can add", "Server plugins you can add");
             return;
         }
-        if (_available.Count == 0)
-        {
-            AvailablePluginsHint.Text = "You have every RynthSuite plugin.";
-            return;
-        }
-        string suite = Path.GetDirectoryName(Path.GetDirectoryName(_available[0].Path)) ?? RynthUpdater.DefaultSuiteDir;
-        AvailablePluginsHint.Text = $"RynthSuite plugins you don't have. Install downloads one into {suite} and adds it to the list above; it loads the next time AC starts.";
-        foreach (RynthUpdater.AvailablePlugin a in _available)
+        // Server plugins (one game server each) go on their own tab; they muddied the regular list.
+        var regular = _available.Where(a => !PluginNames.IsServerPlugin(a.Entry.Name)).ToList();
+        var forServers = _available.Where(a => PluginNames.IsServerPlugin(a.Entry.Name))
+                                   .OrderBy(a => PluginNames.ServerOf(a.Entry.Name)?.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        string suite = _available.Count > 0
+            ? Path.GetDirectoryName(Path.GetDirectoryName(_available[0].Path)) ?? RynthUpdater.DefaultSuiteDir
+            : RynthUpdater.DefaultSuiteDir;
+
+        AvailablePluginsHint.Text = regular.Count == 0
+            ? "You have every RynthSuite plugin."
+            : $"RynthSuite plugins you don't have. Install downloads one into {suite} and adds it to the list above; it loads the next time AC starts.";
+        foreach (RynthUpdater.AvailablePlugin a in regular)
             AvailablePluginsPanel.Children.Add(BuildAvailableCard(a));
+
+        AvailableServerPluginsHint.Text = forServers.Count == 0
+            ? "You have every server plugin."
+            : $"Add the one for the server you play on. Install downloads it into {suite}; RynthCore loads it only when you connect to that server.";
+        foreach (RynthUpdater.AvailablePlugin a in forServers)
+            AvailableServerPluginsPanel.Children.Add(BuildAvailableCard(a));
     }
 
     private Border BuildAvailableCard(RynthUpdater.AvailablePlugin a)
@@ -485,6 +518,8 @@ internal partial class MainWindow : Window
 
         var stack = new StackPanel { Spacing = 4 };
         stack.Children.Add(name);
+        if (PluginNames.ServerOf(a.Entry.Name) is { } server)
+            stack.Children.Add(new TextBlock { Text = $"For {server.Name} ({server.Address}): {server.Note}", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#9AA8B3") });
         if (a.Description.Length > 0)
             stack.Children.Add(new TextBlock { Text = a.Description, TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#9AA8B3") });
         stack.Children.Add(new TextBlock
@@ -579,7 +614,7 @@ internal partial class MainWindow : Window
         Dispatcher.UIThread.Post(() => AvailablePluginsBorder.BringIntoView(), DispatcherPriority.Background);
     }
 
-    private static Border BuildPluginCard(CheckBox checkBox, string description, Action? onRemove)
+    private static Border BuildPluginCard(CheckBox checkBox, string description, string? location, Action? onRemove)
     {
         var host = new Border
         {
@@ -590,14 +625,23 @@ internal partial class MainWindow : Window
             Padding = new Thickness(12)
         };
 
-        var stack = new StackPanel { Spacing = 6 };
+        var stack = new StackPanel { Spacing = 4 };
         stack.Children.Add(checkBox);
-        stack.Children.Add(new TextBlock
-        {
-            Text = description,
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = Brush.Parse("#9AA8B3")
-        });
+        if (description.Length > 0)
+            stack.Children.Add(new TextBlock
+            {
+                Text = description,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Brush.Parse("#9AA8B3")
+            });
+        if (!string.IsNullOrEmpty(location))
+            stack.Children.Add(new TextBlock
+            {
+                Text = location,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Brush.Parse("#6F7F8A")
+            });
 
         if (onRemove == null)
         {

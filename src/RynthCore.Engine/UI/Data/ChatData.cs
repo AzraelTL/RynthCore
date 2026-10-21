@@ -427,6 +427,8 @@ internal static class ChatModel
     public static volatile string MentionWords = "";
     /// <summary>How many lines the scrollback keeps, all tabs together (ChatHistory; "Chat history" in the gear menu).</summary>
     public static volatile int HistoryLines = ChatHistory.DefaultLines;
+    /// <summary>The tabs in a row across the top (wrapping), as before 2026-10-09, instead of the channels drawer.</summary>
+    public static volatile bool TabsAcross;
 
     public static void SetHistoryLines(int lines)
     {
@@ -1411,6 +1413,7 @@ internal static class ChatModel
             MentionSound = dto.MentionSound;
             MentionWords = dto.MentionWords ?? "";
             HistoryLines = ChatHistory.Clamp(dto.HistoryLines ?? 0);   // absent before 2026-10-11: the default
+            TabsAcross = dto.TabsAcross ?? false;   // absent before 2026-10-20 (and while off): the drawer
             ChatLineColors.Load(dto.LineColors);   // absent before 2026-10-08: nothing set
 
             var tabs = new List<string>();
@@ -1499,6 +1502,7 @@ internal static class ChatModel
             MentionWords = MentionWords,
             // Left out at the default, so a file follows the default if it ever changes.
             HistoryLines = HistoryLines == ChatHistory.DefaultLines ? null : HistoryLines,
+            TabsAcross = TabsAcross ? true : null,
             LineColors = ChatLineColors.ToJson(),   // null (left out) until a colour is set
             CustomTabs = Volatile.Read(ref _customTabs),
             Filters = Filters.Select(ToDto).ToArray(),

@@ -36,6 +36,7 @@ internal static class Program
         try
         {
             await Run(nameof(AvailableIsFeedMinusInstalled), AvailableIsFeedMinusInstalled);
+            await Run(nameof(PluginNamesAndServerSplit), () => { PluginNamesAndServerSplit(); return Task.CompletedTask; });
             await Run(nameof(OnlyRynthLuaIsAutomatic), OnlyRynthLuaIsAutomatic);
             await Run(nameof(OldManifestWithoutDescriptions), OldManifestWithoutDescriptions);
             await Run(nameof(DescriptionsAreOneShortLine), DescriptionsAreOneShortLine);
@@ -699,6 +700,24 @@ internal static class Program
         Check(install.Title == "Installing RynthNav map" && install.ProgressPercent == null && !install.ShowCancel, "installing: indeterminate, no Cancel");
         var verified = UpdateCardModel.Build(new UpdateCardInput { Download = p with { Stage = DownloadStage.Verified } });
         Check(verified.Title == "RynthNav map: verified", "verified step shown");
+    }
+
+    /// <summary>
+    /// The plugin list shows "RynthAi" (not "RynthCore.Plugin.RynthAi"), and a plugin for one game server
+    /// goes on the Server plugins tab (RynthThreads too: DreamWeave only), the rest on Plugins.
+    /// </summary>
+    private static void PluginNamesAndServerSplit()
+    {
+        Check(RynthCore.App.Avalonia.PluginNames.Friendly(@"C:\Games\RynthSuite\RynthAi\RynthCore.Plugin.RynthAi.dll") == "RynthAi", "a DLL path: the short name");
+        Check(RynthCore.App.Avalonia.PluginNames.Friendly("RynthCore.Plugin.RynthNav") == "RynthNav", "a file name without .dll");
+        Check(RynthCore.App.Avalonia.PluginNames.Friendly("RynthOracle") == "RynthOracle", "a feed name stays");
+        Check(RynthCore.App.Avalonia.PluginNames.Friendly("SomeoneElse.dll") == "SomeoneElse", "another plugin keeps its name");
+        foreach (string s in new[] { "RynthDreamWeave", "RynthConquest", "RynthILT", "RynthThreads", "RynthCore.Plugin.RynthAelrynth.dll" })
+            Check(RynthCore.App.Avalonia.PluginNames.IsServerPlugin(s), $"{s}: a server plugin");
+        foreach (string s in new[] { "RynthAi", "RynthNav", "RynthChat", "RynthNet", "RynthLua", "SomeoneElse" })
+            Check(!RynthCore.App.Avalonia.PluginNames.IsServerPlugin(s), $"{s}: a regular plugin");
+        Check(RynthCore.App.Avalonia.PluginNames.ServerOf("RynthThreads")?.Name == "DreamWeave", "RynthThreads is DreamWeave's");
+        Check(RynthUpdater.DescribeByName("RynthNet").Length > 0 && RynthUpdater.DescribeByName("RynthSort").Length > 0, "every RynthSuite plugin has a line");
     }
 
     private static void UpdateCardWhatsNew()

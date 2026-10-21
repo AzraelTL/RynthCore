@@ -291,6 +291,15 @@ internal sealed class RynthAiSettings
     public string DiagFolder { get; set; } = string.Empty;
 
     /// <summary>A private copy for a face to edit (all members are values or strings).</summary>
+    // VTank's options page (the Classic dashboard's Main tab): RynthAi stores them with the profile and metas
+    // read them (UseDispelItems, AutoFellowMgmt); CustomPetRange is the pet manager's range. Nullable, like
+    // EnableVaultedDungeons: a RynthAi that predates them (before 2026-10-19) omits them, their rows stay
+    // hidden, and a save sends null, which RynthAi leaves alone.
+    public bool? UseDispelItems { get; set; }
+    public bool? AutoFellowMgmt { get; set; }
+    public bool? MChargesWhenOff { get; set; }
+    public int? CustomPetRange { get; set; }
+
     public RynthAiSettings Clone() => (RynthAiSettings)MemberwiseClone();
 }
 
@@ -492,6 +501,7 @@ internal static class SettingsSchema
 {
     // Also drawn on the Nav panel (ImGui/Panels/NavFace.cs).
     public const string NavPointReachLabel = "Nav point reach (yd)";
+    private static readonly string[] DashboardLooks = { "Modern (compact)", "Classic (retail)" };
     /// <summary>The Navigation row of RynthAi's Vaulted Dungeons master switch (<see cref="RynthAiSettings.EnableVaultedDungeons"/>).</summary>
     public const string VaultedDungeonsLabel = "Vaulted Dungeons";
     public const string NavPointReachTip =
@@ -683,6 +693,10 @@ internal static class SettingsSchema
         {
             Bool("Show Target Stamina / Mana", s => s.ShowTargetStaminaMana, (s, v) => s.ShowTargetStaminaMana = v,
                 "When enabled, displays stamina and mana bars for the selected target (requires appraisal data)."),
+            // Stored with the dashboard's state (RynthAiDashboardState), not in the RynthAi profile.
+            Combo("RynthAi Dashboard Look", DashboardLooks, _ => RynthAiDashboardState.Classic ? 1 : 0,
+                (_, v) => ImGuiBackend.Panels.RynthAiFace.SwitchLook(v == 1),
+                "Modern: the compact dashboard. Classic: a retail-style window with tabs (Main, Monsters, Gear, Buffs,\nRoute, Loot, Meta, Tuning), drawn with the game's own pictures. Also: the button on either look's title bar."),
             // Stored in engine.json for every client (EngineSettings), not in the RynthAi profile.
             Bool("Insert Key Releases the UI", _ => Plugins.EngineSettings.InsertReleasesUi,
                 (_, v) => { Plugins.EngineSettings.InsertReleasesUi = v; if (!v) ImGuiBackend.Win32Backend.ReclaimUi(); },
@@ -1027,6 +1041,10 @@ internal static class SettingsSchema
             Spacer(),
             Bool("Summon Pets", s => s.SummonPets, (s, v) => s.SummonPets = v),
             Int("Pet Min Monsters", s => s.PetMinMonsters, (s, v) => s.PetMinMonsters = v, 1, 20, 1),
+            new(SettingKind.Int, "Pet Range",
+                "A pet is summoned when at least Pet Min Monsters attackable monsters are this close (yards).",
+                s => s.CustomPetRange ?? 5, (s, v) => s.CustomPetRange = (int)Math.Round(v), 1, 50, 1,
+                VisibleWhen: s => s.CustomPetRange.HasValue),
         }),
 
         new("Spell Combat", Concat(
@@ -1036,6 +1054,15 @@ internal static class SettingsSchema
             Int("Attack Spell Delay (ms)", s => s.AttackSpellIntervalMs, (s, v) => s.AttackSpellIntervalMs = v, 0, 5000, 50,
                 "Least time between offensive (war/void) COMBAT casts at one target.\nThe next cast also waits until the last one is finished (the server's\nanswer and the casting animation), so 0 = cast again as soon as it is.\nDoes NOT affect buffing speed."),
             Bool("Cast Dispel Self", s => s.CastDispelSelf, (s, v) => s.CastDispelSelf = v),
+            Bool("Use Dispel Items", s => s.UseDispelItems ?? false, (s, v) => s.UseDispelItems = v,
+                "VTank's Use Dispel Items, saved with the profile. Metas read it (UseDispelItems).",
+                when: s => s.UseDispelItems.HasValue),
+            Bool("Auto Fellowship Management", s => s.AutoFellowMgmt ?? false, (s, v) => s.AutoFellowMgmt = v,
+                "VTank's Auto Fellow Mgmt., saved with the profile. Metas read it (AutoFellowMgmt).",
+                when: s => s.AutoFellowMgmt.HasValue),
+            Bool("M. Charges When Off", s => s.MChargesWhenOff ?? false, (s, v) => s.MChargesWhenOff = v,
+                "VTank's option of this name, saved with the profile for VTank users. RynthAi doesn't act on it yet.",
+                when: s => s.MChargesWhenOff.HasValue),
             Spacer(),
             Section("Ring Spell Override"),
             Int("Min Ring Targets", s => s.MinRingTargets, (s, v) => s.MinRingTargets = v, 1, 20, 1,

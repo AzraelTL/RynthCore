@@ -52,6 +52,7 @@ internal static class Program
         RetailStandardFilters();
         RetailRules();
         RetailSetting();
+        TabsAcrossSetting();
         SharedFileReload();
         LineColorTags();
         LineColorKinds();
@@ -601,6 +602,20 @@ internal static class Program
         Check(JsonSerializer.Deserialize(JsonSerializer.Serialize(old, opts), opts)!.HideInRetail == true, "on round-trips");
         Check(JsonSerializer.Deserialize("{\"hideInRetail\":null}", opts)!.HideInRetail == null, "null reads as absent");
         Check(JsonSerializer.Deserialize(off, opts)!.Filters!.Length == 3, "the other fields are untouched");
+    }
+
+    private static void TabsAcrossSetting()
+    {
+        Case("tabs across the top: off (the drawer) unless a file says true");
+        var opts = RynthChatJsonContext.Default.RynthChatSettingsDto;
+        RynthChatSettingsDto old = JsonSerializer.Deserialize(OldFile, opts)!;
+        Check(old.TabsAcross == null, "a file from before the setting has no value (ChatModel reads that as the drawer)");
+        Check(!JsonSerializer.Serialize(old, opts).Contains("tabsAcross", StringComparison.Ordinal), "saving it writes no tabsAcross key");
+        old.TabsAcross = true;
+        string on = JsonSerializer.Serialize(old, opts);
+        Check(on.Contains("\"tabsAcross\":true", StringComparison.Ordinal), "on is saved as tabsAcross:true");
+        Check(JsonSerializer.Deserialize(on, opts)!.TabsAcross == true, "on loads back");
+        Check(JsonSerializer.Deserialize(on, opts)!.Filters!.Length == 3, "the other fields are untouched");
     }
 
     // ── Shared settings reload (2026-10-19; idea from Silentkelpie, rynth PR 6) ──

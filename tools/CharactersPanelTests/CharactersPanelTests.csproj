@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\RynthCore.Engine\UI\Data\CharactersModel.cs" Link="Engine\CharactersModel.cs" />
+    <Compile Include="..\..\src\RynthCore.Engine\Compatibility\HeadingMath.cs" Link="Engine\HeadingMath.cs" />
   </ItemGroup>
 
 </Project>

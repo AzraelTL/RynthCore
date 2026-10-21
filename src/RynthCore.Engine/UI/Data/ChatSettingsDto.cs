@@ -66,6 +66,8 @@ internal sealed class RynthChatSettingsDto
     [JsonPropertyName("lineColors")]      public Dictionary<string, string>? LineColors { get; set; }
     // 2026-10-11: how many lines the scrollback keeps (ChatHistory); absent at the default (2000).
     [JsonPropertyName("historyLines")]    public int?   HistoryLines    { get; set; }
+    // 2026-10-20: the tabs in a row across the top instead of the channels drawer; absent while off.
+    [JsonPropertyName("tabsAcross")]      public bool?  TabsAcross      { get; set; }
     [JsonPropertyName("customTabs")]      public string[]? CustomTabs   { get; set; }
     [JsonPropertyName("filters")]         public RynthChatFilterDto[]? Filters { get; set; }
     /// <summary>Standard filters' user state (RynthChatPresets); absent while none was changed.</summary>
