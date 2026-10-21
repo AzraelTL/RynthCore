@@ -128,27 +128,6 @@ internal sealed class AcLaunchArgumentBuilder
         return null;
     }
 
-    private static string Quote(string value)
-    {
-        value ??= string.Empty;
-
-        if (value.Length == 0)
-            return "\"\"";
-
-        if (!NeedsQuoting(value))
-            return value;
-
-        return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-    }
-
-    private static bool NeedsQuoting(string value)
-    {
-        foreach (char ch in value)
-        {
-            if (char.IsWhiteSpace(ch) || ch == '"')
-                return true;
-        }
-
-        return false;
-    }
+    /// <summary>One argument by acclient's own rules (AcClientCommandLine), not the C runtime's.</summary>
+    private static string Quote(string value) => AcClientCommandLine.Token(value);
 }

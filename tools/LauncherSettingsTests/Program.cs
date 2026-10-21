@@ -174,8 +174,14 @@ internal static class Program
 
                 var builder = new AcLaunchArgumentBuilder();
                 LaunchServerProfile ace = Server(AcEmulatorKind.Ace), gdle = Server(AcEmulatorKind.Gdle);
-                Check(builder.BuildArguments(ace, a).Contains("-v \"t3st pw \\\"quoted\\\" ü\""), "ACE args carry the password (-v)");
-                Check(builder.BuildArguments(gdle, a).Contains("-a \"A:t3st pw \\\"quoted\\\" ü\""), "GDLE args carry account:password (-a)");
+                // Read back the way acclient reads its command line (AcClientCommandLine.Split): the password
+                // as typed, less its quote marks (the client can't receive one), and the host after it intact.
+                List<string>? aceArgs = AcClientCommandLine.Split(builder.BuildArguments(ace, a));
+                Check(ArgAfter(aceArgs, "-v") == "t3st pw quoted ü" && ArgAfter(aceArgs, "-h") == "127.0.0.1:9000",
+                    "ACE: the client reads the password (-v) and the host after it");
+                List<string>? gdleArgs = AcClientCommandLine.Split(builder.BuildArguments(gdle, a));
+                Check(ArgAfter(gdleArgs, "-a") == "A:t3st pw quoted ü" && ArgAfter(gdleArgs, "-p") == "9000",
+                    "GDLE: the client reads account:password (-a) and the port");
                 string preview = builder.BuildMaskedArguments(ace, a);
                 Check(!preview.Contains("t3st") && preview.Contains("-v " + AcLaunchArgumentBuilder.PasswordMask), "preview masked: " + preview);
                 LaunchAccountProfile noPw = loaded.AccountProfiles.First(x => x.Id == "b");
@@ -457,11 +463,91 @@ internal static class Program
             try { Directory.Delete(root, recursive: true); } catch { }
         }
 
+        ClientCommandLineChecks();
+
         Console.WriteLine(_failed == 0
             ? $"PASS: {_checks} checks"
             : $"FAIL: {_failed} of {_checks} checks failed");
         return _failed == 0 ? 0 : 1;
     }
+
+    // ── acclient's command line ──────────────────────────────────────────────
+    // Passwords with special characters failed to log in (2026-10-21, Conquest; ThwargLauncher, which
+    // passes the password as it is, worked): the launcher wrote the C runtime's escapes (\\ and \"),
+    // which acclient's own splitter keeps as typed. AcClientCommandLine.Split is that splitter
+    // (ConvertCommandLineToArgList, 0x004098F0); everything the launcher writes is read back with it.
+    private static void ClientCommandLineChecks()
+    {
+        Console.WriteLine("-- acclient's command line");
+
+        // The splitter itself, as decompiled: spaces split outside quotes, a quote toggles and is dropped,
+        // a backslash is ordinary, an open quote refuses the line.
+        Check(Same(AcClientCommandLine.Split("\"C:\\Turbine\\Asheron's Call\\acclient.exe\" -a x  -v y"),
+            "C:\\Turbine\\Asheron's Call\\acclient.exe", "-a", "x", "-v", "y"), "the exe path in quotes, double spaces");
+        Check(Same(AcClientCommandLine.Split("a\"\"b c\\\"d e\""), "ab", "c\\d e"), "quotes dropped, a backslash kept as it is");
+        Check(AcClientCommandLine.Split("-v \"a b") == null, "an open quote refuses the line");
+        Check(Same(AcClientCommandLine.Split("-v a\tb"), "-v", "a\tb"), "only a space splits (a tab is part of the argument)");
+
+        // A long password with nearly every special character and no space (the report): written as it is,
+        // exactly as ThwargLauncher writes it.
+        string special = "Aa1!@#$%^&*()_+-=[]{}|\\:;'<>,.?/~`" + "Zz9\\\\end\\";
+        Check(AcClientCommandLine.Token(special) == special, "no space, no quote: the password as it is");
+        Check(ReadsBack(special, special), "and the client reads it back");
+
+        // Quote marks: the client drops them whatever the launcher does; with them left out the rest
+        // reaches the server as typed, and the line can't end on an open quote.
+        // Negative control: the old C-runtime form reads back wrong, so the checks here mean something.
+        static string OldQuote(string v) => "\"" + v.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        Check(ArgAfter(AcClientCommandLine.Split("-v " + OldQuote("x\"y\"z\\") + " -h h"), "-v") is string old && old != "xyz\\",
+            "negative control: the old escapes reach the client changed");
+        Check(ReadsBack("p\"ss\\word", "pss\\word"), "one quote mark: left out, the backslash kept (was \\\\ before)");
+        Check(ReadsBack("x\"y\"z\\", "xyz\\"), "two quote marks");
+        Check(AcClientCommandLine.LosesCharacters("a\"b") && !AcClientCommandLine.LosesCharacters(special), "LosesCharacters: only a quote mark");
+        Check(ReadsBack("pa ss \\ word\\", "pa ss \\ word\\"), "spaces: in quotes, a trailing backslash kept");
+        Check(ReadsBack("ü€£§°´ ä", "ü€£§°´ ä"), "non-ASCII and a space");
+
+        // Every password ThwargLauncher can log in with (no space: it doesn't quote) reads back the same
+        // through ours; and ours reads back every password, quotes left out.
+        const string Alphabet = "ab\\\" !@#$%^&*()-_=+[]{};:',.<>/?|`~ü";
+        var rng = new Random(20261021);
+        int thwargSame = 0, ours = 0;
+        for (int n = 0; n < 4000; n++)
+        {
+            var sb = new System.Text.StringBuilder();
+            int len = 1 + rng.Next(40);
+            for (int i = 0; i < len; i++) sb.Append(Alphabet[rng.Next(Alphabet.Length)]);
+            string pw = sb.ToString();
+            string expected = AcClientCommandLine.ClientValue(pw);
+            if (expected.Length == 0) continue;
+            if (ReadsBack(pw, expected)) ours++;
+            else { Check(false, "reads back: " + pw); break; }
+            List<string>? thwarg = AcClientCommandLine.Split("-a acct -v " + pw + " -h host:9000");
+            if (pw.IndexOf(' ') < 0 && thwarg != null && thwarg.Count == 6)
+            {
+                if (ArgAfter(thwarg, "-v") == expected) thwargSame++;
+                else { Check(false, "same as ThwargLauncher: " + pw); break; }
+            }
+        }
+        Check(ours > 3500 && thwargSame > 100, $"random passwords: {ours} read back, {thwargSame} the same as ThwargLauncher's");
+    }
+
+    /// <summary>The launcher's ACE line for <paramref name="password"/>, read back by acclient's rules.</summary>
+    private static bool ReadsBack(string password, string expected)
+    {
+        string line = "-a " + AcClientCommandLine.Token("acct") + " -v " + AcClientCommandLine.Token(password)
+                      + " -h " + AcClientCommandLine.Token("host:9000") + " -rodat off";
+        List<string>? args = AcClientCommandLine.Split(line);
+        return args != null && args.Count == 8 && ArgAfter(args, "-v") == expected && ArgAfter(args, "-h") == "host:9000";
+    }
+
+    private static string? ArgAfter(List<string>? args, string name)
+    {
+        if (args == null) return null;
+        int i = args.IndexOf(name);
+        return i >= 0 && i + 1 < args.Count ? args[i + 1] : null;
+    }
+
+    private static bool Same(List<string>? got, params string[] want) => got != null && got.SequenceEqual(want);
 
     // ── helpers ──────────────────────────────────────────────────────────────
 

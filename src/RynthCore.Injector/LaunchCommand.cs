@@ -260,6 +260,8 @@ internal static class LaunchCommand
             Log($"No password is saved for account '{acct}'. Launch it once from the launcher to enter it, or edit the account.");
             return 2;
         }
+        if (RynthCore.App.AcClientCommandLine.LosesCharacters(pwd))
+            Log("Note: the password has a quote mark (\"). The AC client can't receive one on its command line, so it logs in with the password less its quote marks.");
 
         string arguments = server.Emulator == EmulatorKind.Gdle
             ? string.Join(" ",
@@ -384,16 +386,8 @@ internal static class LaunchCommand
 
     // Mirrors AcLaunchArgumentBuilder.Quote — only quote when needed, escape
     // backslashes + quotes inside.
-    private static string Quote(string value)
-    {
-        value ??= string.Empty;
-        if (value.Length == 0)
-            return "\"\"";
-        bool needs = value.Any(ch => char.IsWhiteSpace(ch) || ch == '"');
-        if (!needs)
-            return value;
-        return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-    }
+    /// <summary>One argument by acclient's own rules (AcClientCommandLine), as the launcher writes it.</summary>
+    private static string Quote(string value) => RynthCore.App.AcClientCommandLine.Token(value);
 
     private static string? GetOpt(string[] args, string name)
     {
