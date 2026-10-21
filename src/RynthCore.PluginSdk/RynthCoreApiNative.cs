@@ -181,6 +181,10 @@ public struct RynthCoreApiNative
     public IntPtr GetServerStateJsonFn;      // int GetServerStateJson(byte* buffer, int capacity) -> UTF-8 byte length (>= capacity: too small)
     // v87: what the player wields, from the server's messages (the client's own fields go stale)
     public IntPtr GetWieldedItemsFn;         // int GetWieldedItems(uint* ids, uint* locations, int max) -> count, -1 not ready
+    // v89: plugin windows (RynthCore docs/PLUGIN_WINDOWS.md): the engine's look, and panels by key
+    public IntPtr GetUiColorFn;              // uint GetUiColor(int token) -> ABGR, 0 unknown
+    public IntPtr GetUiFontFn;               // void* GetUiFont(int font) -> ImFont*, null unknown / off AC's thread
+    public IntPtr SetPanelOpenFn;            // int SetPanelOpen(const char* key, int mode) -> 1 open, 0 closed, -1 no such panel
 }
 
 /// <summary>

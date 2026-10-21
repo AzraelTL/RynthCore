@@ -97,6 +97,8 @@ namespace RynthCore.Engine.Compatibility;
 internal static class RynthCoreChatCommands
 {
     private const string Prefix = "/rc ";
+    /// <summary>RynthNet's Characters window (a plugin window: its title is its panel key).</summary>
+    private const string CharactersWindowTitle = "Characters";
 
     /// <summary>The Settings tab with the server picker (UI/Data/SettingsData.cs "Diagnostics").</summary>
     private const string DiagnosticsTabName = "Diagnostics";
@@ -533,11 +535,11 @@ internal static class RynthCoreChatCommands
 
             case "characters":
             case "chars":
-                // The ImGui Characters panel (your other RynthCore clients, through RynthNet).
-                if (!ImGuiBackend.ImGuiPanelHost.HasFace(ImGuiBackend.Panels.CharactersFace.Title))
-                    Reply("The Characters panel needs the RynthNet plugin (add it in the launcher's Plugins tab).");
+                // The Characters window: RynthNet's own since 2026-10-21 (a plugin window, keyed by its title).
+                if (!ImGuiBackend.ImGuiPanelHost.HasFace(CharactersWindowTitle))
+                    Reply("The Characters window comes with the RynthNet plugin (add it in the launcher's Plugins tab).");
                 else
-                    UI.PanelRouter.Toggle(ImGuiBackend.Panels.CharactersFace.Title);
+                    UI.PanelRouter.Toggle(CharactersWindowTitle);
                 return true;
 
             case "itemcount":

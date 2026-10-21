@@ -134,12 +134,12 @@ internal sealed class DamageDetailFace : IImGuiPanel
         {
             ImGuiNET.ImGui.SameLine();
             SafeImGui.TextColored(Vec(Dim), "wcid " + wcid.ToString(CultureInfo.InvariantCulture));
-            // Aelrynth only: which difficulty tier these numbers are (the Damage panel's chip picks it).
+            // Where the server plugin reports tiers: which difficulty tier these numbers are (the Damage panel's chip picks it).
             if (UiSources.Damage.Current?.Value.Tier is { Show: true } tier)
             {
                 ImGuiNET.ImGui.SameLine();
                 SafeImGui.TextColored(Vec(tier.View == tier.Current ? Teal : Gold),
-                    tier.View <= 0 ? "· Tier 0 (real Dereth)" : "· Tier " + tier.View.ToString(CultureInfo.InvariantCulture));
+                    tier.View <= 0 ? "· Tier 0 (unscaled)" : "· Tier " + tier.View.ToString(CultureInfo.InvariantCulture));
                 ImGuiNET.ImGui.SetItemTooltip("HP, casts to kill, seconds per kill, hits and damage taken are this difficulty tier's.\n" +
                                               "Damage per cast and weaknesses are the same at every tier. Change it on the Damage panel.");
             }

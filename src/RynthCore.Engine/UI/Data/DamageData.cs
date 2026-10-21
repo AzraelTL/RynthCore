@@ -10,13 +10,14 @@
 //  UI thread. Setters run on the pump too (DamageCommands), so they no longer
 //  race the plugin tick.
 //
-//  Aelrynth difficulty tiers (2026-10-03): RynthAi keeps a monster's HP, kills,
-//  casts to kill, seconds per kill and hit rate per tier of Aelrynth's awakened
-//  worlds and scaled copies (same monsters, +5% a tier). The rows describe the
-//  tier RynthAi is showing; RynthPluginGetAwakenedTierJson says which, and the
-//  panel's picker sets it (RynthPluginSetDamageViewTier). Shown only on
-//  Aelrynth (ServerInfo.IsAelrynth) and once RynthAi has seen the server's tier;
-//  an older RynthAi without the export shows nothing of it.
+//  Difficulty tiers (2026-10-03; generic since 2026-10-21): on a server whose
+//  plugin reports tiers (the same monsters scaled by a percent a tier), RynthAi
+//  keeps a monster's HP, kills, casts to kill, seconds per kill and hit rate per
+//  tier. The rows describe the tier RynthAi is showing;
+//  RynthPluginGetAwakenedTierJson (the export's old name) says which and whether
+//  to show tiers at all, and the panel's picker sets it
+//  (RynthPluginSetDamageViewTier). An older RynthAi without the export shows
+//  nothing of it.
 // ============================================================================
 
 using System;
@@ -36,7 +37,7 @@ internal sealed class DamageRow
 {
     public uint Wcid; public string Name = ""; public uint Wid; public string Weapon = "";
     public string Elem = ""; public int Tier; public int Hp; public bool HpManual;
-    /// <summary>Hp is an estimate: real Dereth's +5% per Aelrynth difficulty tier (that tier not appraised yet).</summary>
+    /// <summary>Hp is an estimate: tier 0's plus the tier's scaling (that tier not appraised yet).</summary>
     public bool HpEst;
     public double Crit; public int CritN; public double NonCrit; public int NonCritN;
     public double Casts; public int Kills; public string Key = "";
@@ -79,14 +80,14 @@ internal sealed class DamageView
     /// <summary>("" = Auto, "E:&lt;element&gt;", "I:&lt;essence id&gt;", label).</summary>
     public List<(string Key, string Name)> PetChoices = new();
     public bool Bound;
-    /// <summary>The Aelrynth difficulty tier the rows describe; Show false = say nothing of tiers.</summary>
-    public AwakenedTierView Tier = AwakenedTierView.Hidden;
+    /// <summary>The difficulty tier the rows describe; Show false = say nothing of tiers.</summary>
+    public DifficultyTierView Tier = DifficultyTierView.Hidden;
 }
 
-/// <summary>RynthPluginGetAwakenedTierJson, gated on ServerInfo.IsAelrynth.</summary>
-internal sealed class AwakenedTierView
+/// <summary>RynthPluginGetAwakenedTierJson: RynthAi shows tiers only when the server plugin reports them.</summary>
+internal sealed class DifficultyTierView
 {
-    public static readonly AwakenedTierView Hidden = new();
+    public static readonly DifficultyTierView Hidden = new();
 
     public bool Show;
     /// <summary>The tier where the player stands; the tier the rows describe; whether that follows Current.</summary>
@@ -96,7 +97,7 @@ internal sealed class AwakenedTierView
     /// <summary>Tiers with something learned, plus 0 and the current one, ascending.</summary>
     public List<int> Tiers = new();
 
-    public static AwakenedTierView Parse(string? json)
+    public static DifficultyTierView Parse(string? json)
     {
         if (string.IsNullOrEmpty(json)) return Hidden;
         try
@@ -104,7 +105,7 @@ internal sealed class AwakenedTierView
             using var doc = JsonDocument.Parse(json);
             JsonElement r = doc.RootElement;
             if (!r.TryGetProperty("show", out var sh) || sh.ValueKind != JsonValueKind.True) return Hidden;
-            var t = new AwakenedTierView { Show = true };
+            var t = new DifficultyTierView { Show = true };
             if (r.TryGetProperty("current", out var c)) t.Current = c.GetInt32();
             if (r.TryGetProperty("view", out var v)) t.View = v.GetInt32();
             if (r.TryGetProperty("following", out var f)) t.Following = f.ValueKind == JsonValueKind.True;
@@ -162,8 +163,7 @@ internal sealed unsafe class DamageSource : UiSource<DamageView>
 {
     private delegate* unmanaged[Cdecl]<IntPtr> _getRows, _getWeapons, _getPets, _getTier;
     private string? _rowsJson, _weaponsJson, _petsJson, _tierJson;
-    private AwakenedTierView _tier = AwakenedTierView.Hidden;
-    private bool _tierAelrynth;
+    private DifficultyTierView _tier = DifficultyTierView.Hidden;
     private List<DamageRow> _rows = new();
     private List<(uint Id, string Name)> _items = new();
     private List<(string Key, string Name)> _pets = new();
@@ -197,14 +197,12 @@ internal sealed unsafe class DamageSource : UiSource<DamageView>
             changed = true;
         }
 
-        // The difficulty tier, only on Aelrynth: anywhere else the panel says nothing of tiers.
-        bool aelrynth = ServerInfo.IsAelrynth;
-        string? tierJson = aelrynth && _getTier != null ? Read(_getTier) : null;
-        if (aelrynth != _tierAelrynth || tierJson != _tierJson)
+        // The difficulty tier: RynthAi's {"show":false} where the server plugin reports none.
+        string? tierJson = _getTier != null ? Read(_getTier) : null;
+        if (tierJson != _tierJson)
         {
-            _tierAelrynth = aelrynth;
             _tierJson = tierJson;
-            _tier = aelrynth ? AwakenedTierView.Parse(tierJson) : AwakenedTierView.Hidden;
+            _tier = DifficultyTierView.Parse(tierJson);
             changed = true;
         }
 
@@ -230,8 +228,7 @@ internal sealed unsafe class DamageSource : UiSource<DamageView>
     {
         _getRows = _getWeapons = _getPets = _getTier = null;
         _rowsJson = _weaponsJson = _petsJson = _tierJson = null;
-        _tier = AwakenedTierView.Hidden;
-        _tierAelrynth = false;
+        _tier = DifficultyTierView.Hidden;
         ClearSnapshot();
     }
 
@@ -577,7 +574,7 @@ internal static unsafe class DamageCommands
         UiSources.Damage.RefreshPetsSoon();
     });
 
-    /// <summary>The Aelrynth difficulty tier the panel shows: -1 follows the one where the player stands.</summary>
+    /// <summary>The difficulty tier the panel shows: -1 follows the one where the player stands.</summary>
     public static void SetViewTier(int tier) => Run("view tier", () =>
     {
         if (_setViewTier == null) _setViewTier = (delegate* unmanaged[Cdecl]<int, void>)Export("RynthPluginSetDamageViewTier");

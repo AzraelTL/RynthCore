@@ -28,6 +28,8 @@ internal static class Program
         SelectionCurrentPick();
         SelectionActiveAndOwner();
         StateJson();
+        ManifestWindows();
+        WindowPlanChoices();
 
         Console.WriteLine();
         Console.WriteLine($"{_checks - _failed}/{_checks} checks passed.");
@@ -432,6 +434,69 @@ internal static class Program
         fixed (byte* p = big)
             Check(ServerStateJson.Write(json, p, big.Length) == length, "fits: length");
         Check(System.Text.Encoding.UTF8.GetString(big, 0, length) == json && big[length] == 0, "fits: text and NUL");
+    }
+
+    // ── Plugin windows (v89, docs/PLUGIN_WINDOWS.md) ───────────────────
+
+    private const string WindowsManifest = """
+    { "version": 1,
+      "windows": [
+        { "id": "characters", "title": "Characters", "surface": "window:characters", "icon": "\uE68E",
+          "width": 420, "height": 260, "minWidth": 280, "minHeight": 140, "bar": true, "edgeToEdge": true },
+        { "id": "bank", "title": "Bank", "surface": "window:bank", "server": "ilt" },
+        { "id": "tiny", "title": "Tiny", "surface": "window:tiny", "width": 10, "height": 99999, "minWidth": 5000 },
+        { "id": "badicon", "title": "Bad Icon", "surface": "window:x", "icon": "AB" },
+        { "id": "characters", "title": "Again", "surface": "window:again" },
+        { "id": "dupe", "title": "characters", "surface": "window:dupe" },
+        { "id": "Bad Id", "title": "No", "surface": "window:no" },
+        { "id": "nosurface", "title": "No surface" },
+        { "id": "popout", "title": "Popout", "surface": "window:x:popout" },
+        { "id": "srv", "title": "Bad server", "surface": "window:s", "server": "Not An Id" }
+      ] }
+    """;
+
+    private static void ManifestWindows()
+    {
+        Case("manifest: windows a plugin draws");
+        SectionManifest m = SectionManifestParser.Parse("RynthNet", WindowsManifest, out string err);
+        Check(err.Length == 0, "parses: " + err);
+        Check(m.Windows.Length == 4, $"four kept (got {m.Windows.Length}: {string.Join(", ", m.Windows.Select(w => w.Title))})");
+        SectionWindowDecl c = m.Windows[0];
+        Check(c.Plugin == "RynthNet" && c.Id == "characters" && c.Title == "Characters" && c.Surface == "window:characters", "identity");
+        Check(c.Icon == "\uE68E" && c.Bar && c.EdgeToEdge && c.IsUniversal, "icon, bar, edge to edge, every world");
+        Check(c.Width == 420 && c.Height == 260 && c.MinWidth == 280 && c.MinHeight == 140, "sizes as given");
+        SectionWindowDecl bank = m.Windows[1];
+        Check(bank.Server == "ilt" && !bank.IsUniversal && !bank.Bar && bank.Icon == "", "a server's window, no bar, no icon");
+        Check(bank.Width == SectionManifestParser.DefaultWindowWidth && bank.Height == SectionManifestParser.DefaultWindowHeight, "default size");
+        SectionWindowDecl tiny = m.Windows[2];
+        Check(tiny.Width == SectionManifestParser.MinWindowSize && tiny.Height == SectionManifestParser.MaxWindowSize, "sizes clamped");
+        Check(tiny.MinWidth <= tiny.Width && tiny.MinHeight <= tiny.Height, "the minimum never exceeds the size");
+        Check(m.Windows[3].Title == "Bad Icon" && m.Windows[3].Icon == "", "an icon outside the icon font is dropped, the window kept");
+        Check(SectionManifestParser.Icon("\uE68E\uE4D6") == "\uE68E\uE4D6" && SectionManifestParser.Icon("\uE68E\uE4D6\uE000") == "", "one or two glyphs");
+        // An old manifest has none; an engine before v89 just ignores the key.
+        Check(SectionManifestParser.Parse("p", GoodManifest, out _).Windows.Length == 0, "no windows key: none");
+        var many = "{\"windows\":[" + string.Join(",", Enumerable.Range(0, 20).Select(i => $"{{\"id\":\"w{i}\",\"title\":\"W{i}\",\"surface\":\"window:w{i}\"}}")) + "]}";
+        Check(SectionManifestParser.Parse("p", many, out _).Windows.Length == SectionManifestParser.MaxWindows, "capped at MaxWindows");
+    }
+
+    private static void WindowPlanChoices()
+    {
+        Case("plugin windows: which are hosted");
+        SectionManifest net = SectionManifestParser.Parse("RynthNet", WindowsManifest, out _);
+        SectionManifest other = SectionManifestParser.Parse("Other",
+            "{\"windows\":[{\"id\":\"c\",\"title\":\"Characters\",\"surface\":\"window:c\"},{\"id\":\"inv\",\"title\":\"Inventory\",\"surface\":\"window:i\"}]}", out _);
+        var offIlt = new[] { new ServerState("ilt", "Infinite Leaftide", false, false, ServerForce.Auto, true, "") };
+        var onIlt = new[] { new ServerState("ilt", "Infinite Leaftide", true, true, ServerForce.Auto, true, "") };
+        var refused = new List<string>();
+        var plan = WindowPlan.Build(new[] { net, other }, offIlt, t => t == "Inventory", refused);
+        Check(plan.ContainsKey("Characters") && plan["Characters"].Plugin == "RynthNet", "the first plugin keeps a title");
+        Check(!plan.ContainsKey("Bank"), "a server's window waits for its server");
+        Check(!plan.ContainsKey("Inventory"), "an engine panel's title is refused");
+        Check(refused.Count == 2 && refused.Exists(r => r.Contains("Other") && r.Contains("RynthNet")) && refused.Exists(r => r.Contains("engine panel")),
+            "both refusals say why: " + string.Join(" | ", refused));
+        var on = WindowPlan.Build(new[] { net }, onIlt, _ => false, new List<string>());
+        Check(on.ContainsKey("Bank"), "and shows while its server is active");
+        Check(WindowPlan.Signature(net.Windows[0]) != WindowPlan.Signature(net.Windows[1]), "signatures differ per window");
     }
 
     // ── Harness ────────────────────────────────────────────────────────

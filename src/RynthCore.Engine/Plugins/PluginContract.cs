@@ -950,6 +950,38 @@ internal struct RynthCoreAPI
     /// (Compatibility/EquipmentTracker.cs). Returns the count written (at most max), or -1 while
     /// there is no player or nothing to start from. Any thread. Requires API v87+.</summary>
     public IntPtr GetWieldedItemsFn;
+
+    // ── v89: plugin windows (docs/PLUGIN_WINDOWS.md): the engine provides ImGui, plugins draw ──
+
+    /// <summary>v89: <c>uint GetUiColor(int token)</c>: the player's colour theme as ImGui's packed
+    /// colour (ABGR) for a <see cref="UiColorToken"/>, so a plugin's own windows look like the
+    /// engine's; 0 for an unknown token. Any thread (read every frame: it follows a theme change at
+    /// once). Requires API v89+.</summary>
+    public IntPtr GetUiColorFn;
+    /// <summary>v89: <c>void* GetUiFont(int font)</c>: an <c>ImFont*</c> in the shared atlas for a
+    /// <see cref="UiFontToken"/>, at the current panel's text size; null for an unknown font or off
+    /// AC's render thread. Push it around the plugin's own text. Requires API v89+.</summary>
+    public IntPtr GetUiFontFn;
+    /// <summary>v89: <c>int SetPanelOpen(const char* key, int mode)</c>: a panel by its key (a plugin
+    /// window's title, or an engine panel's): mode 1 open, 0 close, 2 toggle, -1 just ask. Returns
+    /// 1 open / 0 closed (after the change, which lands on the next frame), -1 no such panel. Any
+    /// thread. Requires API v89+.</summary>
+    public IntPtr SetPanelOpenFn;
+}
+
+/// <summary>v89 GetUiColor tokens. Append only: plugins compiled against these numbers keep them.</summary>
+internal enum UiColorToken
+{
+    Text = 0, TextMuted = 1, Accent = 2, Highlight = 3, Button = 4, Border = 5, Field = 6, Selected = 7,
+    RowAlt = 8, Background = 9, PanelGlass = 10, AccentFill = 11, BoxBg = 12, FrameBg = 13, FrameHover = 14,
+    FrameActive = 15, Green = 16, Red = 17, TitleBar = 18, WindowBorder = 19,
+}
+
+/// <summary>v89 GetUiFont fonts. Append only.</summary>
+internal enum UiFontToken
+{
+    Ui9 = 0, Ui10 = 1, Ui11 = 2, Ui14 = 3, Ui18 = 4, UiBold11 = 5, UiBold14 = 6,
+    Mono9 = 7, Mono10 = 8, Mono12 = 9, Chat10 = 10, Chat12 = 11, Chat14 = 12,
 }
 
 /// <summary>v79 <see cref="TrainingInfoNative.Flags"/> bits.</summary>
@@ -1731,6 +1763,15 @@ internal unsafe delegate int GetVendorInfoCallbackDelegate(VendorInfoNative* inf
 
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 internal unsafe delegate int GetVendorItemsCallbackDelegate(VendorItemNative* items, int maxCount);
+
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+internal delegate uint GetUiColorCallbackDelegate(int token);
+
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+internal delegate IntPtr GetUiFontCallbackDelegate(int font);
+
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+internal unsafe delegate int SetPanelOpenCallbackDelegate(byte* key, int mode);
 
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 internal unsafe delegate uint VendorBuyCallbackDelegate(uint vendorId, VendorTradeEntryNative* entries, int count);

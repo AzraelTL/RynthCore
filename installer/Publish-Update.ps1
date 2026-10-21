@@ -38,6 +38,9 @@ param(
     [string]$BaseUrl = "https://aelrynth.com/downloads/rynth",
     [string]$KeyDir = (Join-Path $env:USERPROFILE ".rynthcore-update-signing"),
     [string]$RynthSuiteRoot = "",
+    # The server plugins' repository (2026-10-21), beside RynthSuite (it compiles RynthSuite's shared
+    # contracts and the same RynthCore SDK, so their shared DLLs match). Defaults to ..\RynthServers.
+    [string]$RynthServersRoot = "",
     [string]$TrustFile = "",  # defaults to the launcher's UpdateTrust.cs; override for tests
     # RynthNav's data shipped to launchers as the signed "navdata" archive: tiles (nav_XXXX.tile),
     # portals.tsv and locations.json from this folder. Only re-uploaded when the set changes
@@ -56,6 +59,11 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = $PSScriptRoot
 $RepoRoot = Split-Path $ScriptDir -Parent
 if (-not $RynthSuiteRoot) { $RynthSuiteRoot = Join-Path (Split-Path $RepoRoot -Parent) "RynthSuite" }
+if (-not $RynthServersRoot) { $RynthServersRoot = Join-Path (Split-Path $RynthSuiteRoot -Parent) "RynthServers" }
+if (-not (Test-Path (Join-Path $RynthServersRoot "Plugins"))) { throw "No RynthServers checkout at $RynthServersRoot (pass -RynthServersRoot)." }
+if ((Resolve-Path (Split-Path $RynthServersRoot -Parent)).Path -ne (Resolve-Path (Split-Path $RynthSuiteRoot -Parent)).Path) {
+    throw "RynthServers ($RynthServersRoot) must sit beside RynthSuite ($RynthSuiteRoot): it builds against that RynthSuite and RynthCore."
+}
 if (-not $TrustFile) { $TrustFile = Join-Path $RepoRoot "src\RynthCore.App.Avalonia\UpdateTrust.cs" }
 
 function Step($m) { Write-Host ""; Write-Host "== $m" -ForegroundColor Cyan }
@@ -105,11 +113,11 @@ try {
 Write-Host "  signing key is trusted by the launcher ($($trusted.Count) keys)"
 
 if (-not $AllowDirty) {
-    foreach ($repo in $RepoRoot, $RynthSuiteRoot) {
+    foreach ($repo in $RepoRoot, $RynthSuiteRoot, $RynthServersRoot) {
         $dirty = git -C $repo status --porcelain --untracked-files=no
         if ($dirty) { throw "$repo has uncommitted changes — release from committed code (or pass -AllowDirty):`n$dirty" }
     }
-    Write-Host "  RynthCore $(git -C $RepoRoot rev-parse --short HEAD), RynthSuite $(git -C $RynthSuiteRoot rev-parse --short HEAD)"
+    Write-Host "  RynthCore $(git -C $RepoRoot rev-parse --short HEAD), RynthSuite $(git -C $RynthSuiteRoot rev-parse --short HEAD), RynthServers $(git -C $RynthServersRoot rev-parse --short HEAD)"
 }
 
 $liveManifest = $null
@@ -134,25 +142,30 @@ New-Item -ItemType Directory -Force "$rel\plugins", "$rel\build" | Out-Null
 # (RynthCore.PluginSdk, PluginCore, ImGui.NET, MoonSharp, ...) go into the installer's
 # Runtime\PluginShared, where the engine (API 88) finds them. The plugins declare minEngineApi 88,
 # so an older engine refuses them instead of failing to load them. -NativeAotPlugins: the old builds.
-$suitePlugins = "RynthChat", "RynthTracker", "RynthNav", "RynthVision", "RynthLua", "RynthOracle", "RynthInventory", "RynthSort", "RynthILT", "RynthThreads", "RynthNet"
-# Server plugins (Plugins\Shared\ServerPack; SilentKelpie's): one per game server, each loaded by the
-# engine only for its own server. They go in the feed only, so the launcher offers each one under
-# Available plugins for the player to install; not in RynthSuite-Plugins.zip or the installer.
+$suitePlugins = "RynthChat", "RynthTracker", "RynthNav", "RynthVision", "RynthLua", "RynthOracle", "RynthInventory", "RynthSort", "RynthNet"
+# Server plugins (the RynthServers repository since 2026-10-21; ServerPack is SilentKelpie's): one per
+# game server, each loaded by the engine only for its own server. They go in the feed only, so the
+# launcher offers each one on its Server plugins tab for the player to install; not in
+# RynthSuite-Plugins.zip or the installer. RynthILT and RynthThreads were in the zip until 2026-10-21.
 $serverPlugins = "RynthAChard", "RynthAelrynth", "RynthColdeve", "RynthConquest", "RynthDerptide", "RynthDreamWeave", "RynthEversong",
-                 "RynthFrostACE", "RynthFrostcull", "RynthLeafDawn", "RynthLeafdawning", "RynthPortalStorm", "RynthReefcull", "RynthSundering", "RynthThistlecrown"
+                 "RynthFrostACE", "RynthFrostcull", "RynthILT", "RynthLeafDawn", "RynthLeafdawning", "RynthLevistras", "RynthPortalStorm",
+                 "RynthReefcull", "RynthSundering", "RynthThistlecrown", "RynthThreads"
 $managedArgs = if ($NativeAotPlugins) { @() } else {
     @("-p:PublishAot=false", "-p:NativeLib=", "-p:SelfContained=false", "-p:RuntimeIdentifier=win-x86",
       "-p:GenerateRuntimeConfigurationFiles=false", "-p:RynthPluginMinEngineApi=88")
 }
-function Build-Plugin([string]$name, [string]$label) {
+function Build-Plugin([string]$name, [string]$label, [string]$root = $RynthSuiteRoot, [string[]]$extra = @()) {
     Step "Building $name$label"
-    $proj = Join-Path $RynthSuiteRoot "Plugins\RynthCore.Plugin.$name\RynthCore.Plugin.$name.csproj"
+    $proj = Join-Path $root "Plugins\RynthCore.Plugin.$name\RynthCore.Plugin.$name.csproj"
+    if (-not (Test-Path $proj)) { throw "No project for $name at $proj" }
     # PublishDir overrides the projects' own (RynthNav/RynthVision publish into the live C:\Games folders).
-    dotnet publish $proj -c Release "-p:Version=$Version" "-p:PublishDir=$rel\build\$name\" @managedArgs -v q -nologo
+    dotnet publish $proj -c Release "-p:Version=$Version" "-p:PublishDir=$rel\build\$name\" @managedArgs @extra -v q -nologo
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $name" }
 }
 foreach ($name in @("RynthAi") + $suitePlugins) { Build-Plugin $name "" }
-foreach ($name in $serverPlugins) { Build-Plugin $name " (server plugin, feed only)" }
+# Against this release's RynthSuite, whatever RynthServers' own Directory.Build.props would pick.
+$suiteRootArg = "-p:RynthSuiteRoot=$((Resolve-Path $RynthSuiteRoot).Path.TrimEnd('\'))\"
+foreach ($name in $serverPlugins) { Build-Plugin $name " (server plugin, feed only)" $RynthServersRoot @($suiteRootArg) }
 
 $sharedDir = ""
 if (-not $NativeAotPlugins) {
@@ -233,10 +246,12 @@ Extract this zip into C:\Games - it creates:
   C:\Games\RynthSuite\RynthOracle\   RynthOracle plugin (quests, character, titles; based on Oracle of Dereth by Advis Eveldan)
   C:\Games\RynthSuite\RynthInventory\ RynthInventory plugin (search every character's items)
   C:\Games\RynthSuite\RynthSort\     RynthSort plugin (keeps your packs sorted; replaces the RynthSort Lua script)
-  C:\Games\RynthSuite\RynthILT\      RynthILT plugin (Infinite Leaftide only: the ILT Hub, Guardian, bounties, progression)
-  C:\Games\RynthSuite\RynthThreads\  RynthThreads plugin (DreamWeave only: Fragment Press results, what each component brings)
   C:\Games\RynthSuite\RynthNet\      RynthNet plugin (links your clients on this PC: /ub bc, shared vitals, the Characters panel)
   C:\Games\RynthCore\NavData\        RynthNav's portals and Atlas
+
+Plugins for one game server (RynthILT for Infinite Leaftide, RynthThreads for
+DreamWeave, and one per server) are not in this zip: install yours from the
+launcher's Server plugins tab.
 
 Then, in the RynthCore launcher's Plugins tab, add the full path of each
 plugin DLL you want. Install RynthCore first (RynthCore-Setup.exe), which

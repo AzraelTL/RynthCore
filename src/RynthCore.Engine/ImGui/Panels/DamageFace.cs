@@ -16,9 +16,9 @@
 //  Monster Detail panel (weaknesses, accuracy, damage, summons, damage taken,
 //  its rule). x removes the monster (confirmed). Gold = set by you, dim =
 //  automatic.
-//  Aelrynth only: a tier chip after Reset stats (DamageView.Tier) - which of the
-//  awakened worlds' / scaled dungeons' difficulty tiers the numbers are for, and
-//  a picker; "~" marks an HP estimated from real Dereth's. Hidden elsewhere.
+//  Where the server plugin reports difficulty tiers: a tier chip after Reset stats
+//  (DamageView.Tier) - which tier the numbers are for, and a picker; "~" marks an
+//  HP estimated from tier 0's. Hidden elsewhere.
 //
 //  Data: UiSources.Damage and UiSources.MonsterRules (hub); every change goes
 //  through DamageCommands on the pump thread. Rows are drawn only while on
@@ -474,19 +474,19 @@ internal sealed class DamageFace : IImGuiPanel
         return x + w + 6;
     }
 
-    // ── Aelrynth difficulty tier (2026-10-03) ────────────────────────────
-    // Awakened worlds and scaled dungeons hold the same monsters, +5% health, skills and damage a
-    // tier, and RynthAi keeps each tier's numbers apart. The chip says which tier the table shows
-    // and opens a picker; it is drawn only when the data source says so (Aelrynth, tier seen).
+    // ── Difficulty tier (2026-10-03; any server whose plugin reports tiers, 2026-10-21) ──
+    // Some servers scale the same monsters by a percent a tier, and RynthAi keeps each tier's
+    // numbers apart. The chip says which tier the table shows and opens a picker; it is drawn only
+    // when the data source says so (the server plugin reports a tier).
 
     private const uint FollowTier = uint.MaxValue;   // the picker's "where I am" entry
 
-    private static string TierName(int tier) => tier <= 0 ? "Tier 0 (real Dereth)" : "Tier " + tier.ToString(CultureInfo.InvariantCulture);
+    private static string TierName(int tier) => tier <= 0 ? "Tier 0 (unscaled)" : "Tier " + tier.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>The tier chip at <paramref name="x"/>; returns the x after it (unchanged when hidden).</summary>
     private float TierChip(float x, float y)
     {
-        AwakenedTierView? t = _view?.Tier;
+        DifficultyTierView? t = _view?.Tier;
         if (t == null || !t.Show) return x;
         string label = TierName(t.View) + (t.View == t.Current ? " " + PhosphorIcons.MapPin : "") + " " + PhosphorIcons.CaretDown;
         float w = ImGuiNET.ImGui.CalcTextSize(label).X + 16;
@@ -502,8 +502,8 @@ internal sealed class DamageFace : IImGuiPanel
                 DamageCommands.SetViewTier(id == FollowTier ? -1 : (int)id));
         }
         SafeImGui.SetItemTooltip(
-            "Aelrynth's awakened worlds and scaled dungeons have the same monsters, with " +
-            $"{t.Percent.ToString("0.#", CultureInfo.InvariantCulture)}% more health, skills and damage per tier.\n" +
+            "This server scales its monsters by difficulty tier: the same monsters, with " +
+            $"{t.Percent.ToString("0.#", CultureInfo.InvariantCulture)}% more health per tier.\n" +
             "HP, kills, casts to kill, seconds per kill and hit rate here are this tier's; damage per cast,\n" +
             "weaknesses and your settings are the same at every tier.\n" +
             (here ? "Showing the tier where you are (pin)." : $"You are in {TierName(t.Current)}; pick \"Where I am\" to follow it."));
@@ -1276,7 +1276,7 @@ internal sealed class DamageFace : IImGuiPanel
         }
         ImGuiNET.ImGui.SetItemTooltip("Manual max-HP for this monster (off = auto)");
 
-        // An Aelrynth tier not appraised yet shows real Dereth's HP scaled by the tier, marked "~".
+        // A tier not appraised yet shows tier 0's HP scaled by the tier, marked "~".
         bool estimate = r.HpEst && !manual;
         int shownKey = estimate ? -r.Hp - 1 : r.Hp;   // re-written when the estimate becomes a real value
         if (!e.Active && e.Shown != shownKey)
@@ -1295,7 +1295,7 @@ internal sealed class DamageFace : IImGuiPanel
         bool enter = ImGuiNET.ImGui.InputText("##hp", e.Buffer, (uint)e.Buffer.Length, flags);
         e.Active = ImGuiNET.ImGui.IsItemActive();
         if (estimate)
-            ImGuiNET.ImGui.SetItemTooltip("Estimated: real Dereth's HP plus this tier's scaling. The first fight at this tier\n" +
+            ImGuiNET.ImGui.SetItemTooltip("Estimated: tier 0's HP plus this tier's scaling. The first fight at this tier\n" +
                                           "reads the real number from the game and replaces it.");
         bool commit = manual && (enter || ImGuiNET.ImGui.IsItemDeactivatedAfterEdit());
         ImGuiNET.ImGui.PopStyleVar();

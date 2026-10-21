@@ -28,5 +28,7 @@ internal static class PluginContractVersion
     // v88: managed plugins find their common dependencies in Runtime\PluginShared (installed with
     //      RynthCore), so the update feed ships each managed plugin as one DLL; releases build the
     //      plugins managed (collectible: a reload frees them) and they declare minEngineApi 88.
-    public const uint Current = 88;
+    // v89: plugin windows: GetUiColor, GetUiFont and SetPanelOpen (the engine hosts the windows
+    //      a plugin's sections manifest declares; the plugin draws them; docs/PLUGIN_WINDOWS.md).
+    public const uint Current = 89;
 }

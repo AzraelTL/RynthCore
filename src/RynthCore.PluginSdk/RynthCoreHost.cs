@@ -146,6 +146,10 @@ public readonly unsafe struct RynthCoreHost
     public bool HasGetServerStateJson => _api.Version >= 86 && _api.GetServerStateJsonFn != IntPtr.Zero;
     /// <summary>v87: <see cref="TryGetWieldedItems"/> (what the player wields, from the server's messages).</summary>
     public bool HasGetWieldedItems => _api.Version >= 87 && _api.GetWieldedItemsFn != IntPtr.Zero;
+    /// <summary>v89: <see cref="GetUiColor"/> and <see cref="GetUiFont"/> (the engine's look, for a plugin's own windows).</summary>
+    public bool HasUiTheme => _api.Version >= 89 && _api.GetUiColorFn != IntPtr.Zero && _api.GetUiFontFn != IntPtr.Zero;
+    /// <summary>v89: <see cref="SetPanelOpen"/> (open, close or toggle a panel by its key, a plugin window's title included).</summary>
+    public bool HasSetPanelOpen => _api.Version >= 89 && _api.SetPanelOpenFn != IntPtr.Zero;
     /// <summary>v76: <see cref="CloseContainer"/> (close a corpse or chest like the client's window close).</summary>
     public bool HasCloseContainer => _api.Version >= 76 && _api.CloseContainerFn != IntPtr.Zero;
     /// <summary>v77: <see cref="GetScreenMode"/>, <see cref="GetUiHookFlags"/> and the UI callbacks
@@ -1503,6 +1507,41 @@ public readonly unsafe struct RynthCoreHost
     }
 
     // ─── Chat parser ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// v89: a colour of the player's theme as ImGui's packed colour (ABGR, for draw lists and
+    /// PushStyleColor), or <paramref name="fallback"/> on an older engine. Any thread; cheap, so
+    /// read it each frame and a theme change shows at once.
+    /// </summary>
+    public uint GetUiColor(RynthUiColor token, uint fallback)
+    {
+        if (!HasUiTheme) return fallback;
+        uint c = ((delegate* unmanaged[Cdecl]<int, uint>)_api.GetUiColorFn)((int)token);
+        return c != 0 ? c : fallback;
+    }
+
+    /// <summary>
+    /// v89: the engine's <c>ImFont*</c> for <paramref name="font"/> at the text size of the panel being
+    /// drawn (wrap it in ImGuiNET's ImFontPtr and PushFont it). Zero on an older engine, for an
+    /// unknown font, or off AC's render thread (call it from RynthPluginRenderEmbed).
+    /// </summary>
+    public IntPtr GetUiFont(RynthUiFont font)
+        => HasUiTheme ? ((delegate* unmanaged[Cdecl]<int, IntPtr>)_api.GetUiFontFn)((int)font) : IntPtr.Zero;
+
+    /// <summary>
+    /// v89: opens, closes or toggles the panel <paramref name="key"/> (a plugin window's title, or an
+    /// engine panel's), or asks. Returns 1 open / 0 closed afterwards (the change lands on the next
+    /// frame), -1 for no such panel or an older engine. Any thread.
+    /// </summary>
+    public int SetPanelOpen(string key, RynthPanelOpen mode)
+    {
+        if (!HasSetPanelOpen || string.IsNullOrEmpty(key) || key.Length > 64) return -1;
+        Span<byte> utf8 = stackalloc byte[260];
+        int n = System.Text.Encoding.UTF8.GetBytes(key, utf8[..^1]);
+        utf8[n] = 0;
+        fixed (byte* p = utf8)
+            return ((delegate* unmanaged[Cdecl]<byte*, int, int>)_api.SetPanelOpenFn)(p, (int)mode);
+    }
 
     public bool InvokeChatParser(string text)
     {

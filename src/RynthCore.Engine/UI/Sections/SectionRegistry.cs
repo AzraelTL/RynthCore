@@ -214,6 +214,9 @@ internal static class SectionRegistry
             _revision++;
         }
         _snapshot = new Snapshot(servers, sections, manifests, _revision);
+        // The windows plugins draw (their manifests' "windows"): hosted as panels while wanted.
+        try { PluginWindows.Sync(manifests, servers); }
+        catch (Exception ex) { RynthLog.UI($"PluginWindows: sync failed - {ex.GetType().Name}: {ex.Message}"); }
     }
 
     /// <summary>The built-in servers, then every server a manifest declares with a new id.</summary>

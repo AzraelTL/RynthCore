@@ -16,7 +16,11 @@
 //      { "section": "pets", "server": "", "label": "Pets", "surface": "section:pets",
 //        "primary": true, "width": 560, "height": 580 },
 //      { "section": "skills", "server": "ilt", "label": "Progression",
-//        "command": "/rc progression", "tooltip": "...", "enabled": true, "note": "" } ]
+//        "command": "/rc progression", "tooltip": "...", "enabled": true, "note": "" } ],
+//    "windows": [
+//      { "id": "characters", "title": "Characters", "surface": "window:characters",
+//        "icon": "\uE68E", "width": 420, "height": 260, "minWidth": 280, "minHeight": 140,
+//        "bar": true, "edgeToEdge": true, "server": "" } ]
 //  }
 //  servers       servers the plugin knows. A built-in id (ilt, aelrynth) keeps the
 //                engine's own detection; a new id is detected from its lists.
@@ -26,6 +30,12 @@
 //                = drawn inline through RynthPluginRenderEmbed; "command" = a button
 //                that runs it. "primary" = the section's main view when the engine
 //                has no core panel for it (Pets, Crafting, Spells, ...).
+//  windows       (plugin API v89, 2026-10-21) windows the plugin draws and the engine
+//                hosts as panels: header, pop-out, resize, remembered place, a bar
+//                button when "bar" (the icon: a Phosphor glyph, else the title's
+//                letter); the body is "surface" through RynthPluginRenderEmbed.
+//                "title" is the panel key (unique; an engine panel's is refused).
+//                "server" set: only while that server is active. docs/PLUGIN_WINDOWS.md.
 //
 //  Everything from a plugin is checked here: ids are short lower-case words,
 //  text is capped, a command must be a single "/..." chat command, and the lists
@@ -67,6 +77,28 @@ internal sealed record SectionContribution(
     public bool IsUniversal => Server.Length == 0;
 }
 
+/// <summary>
+/// A window a plugin draws, hosted by the engine (docs/PLUGIN_WINDOWS.md): its panel key and header
+/// are <see cref="Title"/>, its body the plugin's <see cref="Surface"/> through RynthPluginRenderEmbed.
+/// </summary>
+internal sealed record SectionWindowDecl(
+    string Plugin,
+    string Id,
+    string Title,
+    string Surface,
+    string Icon,
+    float Width,
+    float Height,
+    float MinWidth,
+    float MinHeight,
+    bool Bar,
+    bool EdgeToEdge,
+    string Server)
+{
+    /// <summary>For every world, not one server.</summary>
+    public bool IsUniversal => Server.Length == 0;
+}
+
 /// <summary>One plugin's parsed manifest.</summary>
 internal sealed record SectionManifest(
     string Plugin,
@@ -76,6 +108,9 @@ internal sealed record SectionManifest(
 {
     public static readonly SectionManifest Empty =
         new("", Array.Empty<SectionServerDecl>(), Array.Empty<SectionDecl>(), Array.Empty<SectionContribution>());
+
+    /// <summary>The windows the plugin draws (plugin API v89 engines host them; older ones ignore the key).</summary>
+    public SectionWindowDecl[] Windows { get; init; } = Array.Empty<SectionWindowDecl>();
 }
 
 internal static class SectionManifestParser
@@ -93,6 +128,9 @@ internal static class SectionManifestParser
     public const float MaxSurfaceSize = 4096f;
     /// <summary>Largest manifest read at all (a manifest is a few KB).</summary>
     public const int MaxJsonLength = 256 * 1024;
+    public const int MaxWindows = 8;
+    public const int MaxWindowTitleLength = 32;
+    public const float DefaultWindowWidth = 420f, DefaultWindowHeight = 300f, MinWindowSize = 120f, MaxWindowSize = 2000f;
 
     /// <summary>
     /// Parses <paramref name="json"/> from plugin <paramref name="plugin"/>. Never throws:
@@ -155,7 +193,30 @@ internal static class SectionManifestParser
                     Int(e, "order", 1000)));
             }
 
-            return new SectionManifest(plugin, servers.ToArray(), sections.ToArray(), contributions.ToArray());
+            var windows = new List<SectionWindowDecl>();
+            foreach (JsonElement e in Array(root, "windows"))
+            {
+                if (windows.Count >= MaxWindows) break;
+                string id = Id(Str(e, "id"));
+                string title = Text(Str(e, "title"), MaxWindowTitleLength);
+                string surface = Surface(Str(e, "surface"));
+                if (id.Length == 0 || title.Length == 0 || surface.Length == 0) continue;
+                if (windows.Exists(w => w.Id == id || w.Title.Equals(title, StringComparison.OrdinalIgnoreCase))) continue;
+                string rawServer = Str(e, "server");
+                string server = rawServer.Length == 0 ? string.Empty : Id(rawServer);
+                if (rawServer.Length > 0 && server.Length == 0) continue;
+                float width = WindowSize(Size(e, "width"), DefaultWindowWidth);
+                float height = WindowSize(Size(e, "height"), DefaultWindowHeight);
+                float minWidth = Math.Min(WindowSize(Size(e, "minWidth"), MinWindowSize), width);
+                float minHeight = Math.Min(WindowSize(Size(e, "minHeight"), MinWindowSize), height);
+                windows.Add(new SectionWindowDecl(plugin, id, title, surface, Icon(Str(e, "icon")),
+                    width, height, minWidth, minHeight, Bool(e, "bar", false), Bool(e, "edgeToEdge", false), server));
+            }
+
+            return new SectionManifest(plugin, servers.ToArray(), sections.ToArray(), contributions.ToArray())
+            {
+                Windows = windows.ToArray(),
+            };
         }
         catch (JsonException ex)
         {
@@ -199,6 +260,23 @@ internal static class SectionManifestParser
             if (!(char.IsAsciiLetterOrDigit(c) || c is ':' or '_' or '.' or '-')) return string.Empty;
         return t;
     }
+
+    /// <summary>
+    /// A window's bar icon: one or two characters of the icon font's private use area
+    /// (U+E000-U+F8FF, where the Phosphor glyphs sit), else "" (the bar shows the title's letter).
+    /// </summary>
+    public static string Icon(string? text)
+    {
+        string t = (text ?? string.Empty).Trim();
+        if (t.Length is 0 or > 2) return string.Empty;
+        foreach (char c in t)
+            if (c is < '\uE000' or > '\uF8FF') return string.Empty;
+        return t;
+    }
+
+    /// <summary>A window dimension: the given size within MinWindowSize..MaxWindowSize, or <paramref name="fallback"/>.</summary>
+    private static float WindowSize(float given, float fallback) =>
+        given <= 0 ? fallback : Math.Clamp(given, MinWindowSize, MaxWindowSize);
 
     /// <summary>One chat command ("/rc progression"): starts with '/', one line, capped; else "".</summary>
     public static string Command(string? text)

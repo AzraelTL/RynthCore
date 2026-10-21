@@ -7,7 +7,9 @@
 //  registered panel except the ones the RynthAi launcher opens (PanelIcons;
 //  an unknown panel shows its first letter), one per plugin script window that
 //  asked for a button (WindowFlags.BarButton: RynthSort, Oracle, ...; tooltip =
-//  its title; the set is rebuilt as plugins come and go), reload (RL) and pop out.
+//  its title; the set is rebuilt as plugins come and go), one per window a plugin
+//  draws that asked for one (its manifest's "windows" with "bar", UI/Sections/
+//  PluginWindows.cs), reload (RL) and pop out.
 //  Dragging the grip moves the bar; the position is the shared bar= row in
 //  panel_state.txt. Right-click the grip for the bar's menu: its size, its rows
 //  and "Report a problem" (panel buttons have no menu). Pop out moves the ImGui
@@ -71,8 +73,7 @@ internal static class ImGuiBar
     // Skills moves under RynthOracle (Skills / Attributes / Progress tabs): its icon shows only while Oracle's
     // tabs can't be reached (SkillsRouting.ShowSkillsBarIcon), so nobody loses the way in. Mini Remote stays.
     private static readonly string[] ImGuiOnlyBarPanels =
-        { Panels.InventoryFace.Title, Panels.SkillsFace.Title, Panels.SenseFace.Title, Panels.MiniRemoteFace.Title,
-          Panels.CharactersFace.Title };
+        { Panels.InventoryFace.Title, Panels.SkillsFace.Title, Panels.SenseFace.Title, Panels.MiniRemoteFace.Title };
 
     /// <summary>An ImGui-only panel's bar button is wanted: it has a face, and Skills only while Oracle can't host it.</summary>
     private static bool ImGuiOnlyWanted(string title) =>
@@ -145,6 +146,7 @@ internal static class ImGuiBar
     // and which ImGui-only panels had a face. Either changing rebuilds the buttons.
     private static ScriptBarItem[]? _builtScriptButtons;
     private static int _builtImGuiOnlyMask;
+    private static int _builtPluginWindows = -1;
     private static string _tooltip = "";
     private static bool _placed;
     private static Vector2 _pos, _persistedPos;
@@ -752,9 +754,12 @@ internal static class ImGuiBar
     {
         ScriptBarItem[] scriptButtons = ScriptWindowRegistry.BarButtons;
         int mask = ImGuiOnlyMask();
-        if (_buttons != null && ReferenceEquals(scriptButtons, _builtScriptButtons) && mask == _builtImGuiOnlyMask) return;
+        int pluginWindows = UI.Sections.PluginWindows.Version;
+        if (_buttons != null && ReferenceEquals(scriptButtons, _builtScriptButtons) && mask == _builtImGuiOnlyMask
+            && pluginWindows == _builtPluginWindows) return;
         _builtScriptButtons = scriptButtons;
         _builtImGuiOnlyMask = mask;
+        _builtPluginWindows = pluginWindows;
         var list = new List<ButtonInfo>();
         foreach (var (title, _) in OverlayHost.GetPanels())
             if (!LauncherOnly.Contains(title))
@@ -768,6 +773,14 @@ internal static class ImGuiBar
                 string icon = IconFor(title, out bool letter);
                 list.Add(new ButtonInfo(title, "##bar_" + title, icon, letter, title));
             }
+        // Windows plugins draw (their manifests' "windows" with "bar", docs/PLUGIN_WINDOWS.md): the
+        // icon they name (a Phosphor glyph), else the title's letter; the button toggles the panel.
+        foreach (UI.Sections.SectionWindowDecl w in UI.Sections.PluginWindows.BarWindows)
+        {
+            bool letter = false;
+            string icon = w.Icon.Length > 0 ? w.Icon : IconFor(w.Title, out letter);
+            list.Add(new ButtonInfo(w.Title, "##bar_pw_" + w.Plugin + "_" + w.Id, icon, letter, w.Title));
+        }
         // Plugin script windows that asked for a button (RynthSort, Oracle, ...): after the
         // engine's own. Only while the plugin is loaded and has submitted the window.
         foreach (ScriptBarItem item in scriptButtons)

@@ -1156,7 +1156,7 @@ internal sealed partial class RynthAiFace : IImGuiPanel
             SafeImGui.SetItemTooltip(hasGinv
                 ? "Every character's saved packs and storage (RynthInventory)."
                 : "Global Inventory (RynthInventory isn't loaded).");
-            PanelMenuItem(CharactersFace.Title, "/rc characters");
+            PanelMenuItem("Characters", "/rc characters");   // RynthNet's window (a plugin window since 2026-10-21)
 
             UI.ServerMenus.DrawImGuiMenu(separatorFirst: true);
         }

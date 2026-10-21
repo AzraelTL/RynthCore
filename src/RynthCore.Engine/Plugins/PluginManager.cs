@@ -285,6 +285,9 @@ internal static partial class PluginManager
     private static GetLastConfirmationCallbackDelegate? _getLastConfirmationCallback;     // v85
     private static GetServerStateJsonCallbackDelegate? _getServerStateJsonCallback;       // v86
     private static GetWieldedItemsCallbackDelegate? _getWieldedItemsCallback;             // v87
+    private static GetUiColorCallbackDelegate? _getUiColorCallback;                       // v89
+    private static GetUiFontCallbackDelegate? _getUiFontCallback;                         // v89
+    private static SetPanelOpenCallbackDelegate? _setPanelOpenCallback;                   // v89
     private static ForceResetBusyCountCallbackDelegate? _forceResetBusyCountCallback;
     private static GetObjectSpellIdsCallbackDelegate? _getObjectSpellIdsCallback;
     private static GetObjectSkillLevelCallbackDelegate? _getObjectSkillBuffedCallback;
@@ -3168,6 +3171,9 @@ internal static partial class PluginManager
         unsafe { _getLastConfirmationCallback ??= GetLastConfirmationAction; }
         unsafe { _getServerStateJsonCallback ??= GetServerStateJsonAction; }
         unsafe { _getWieldedItemsCallback ??= GetWieldedItemsAction; }
+        _getUiColorCallback ??= UiKit.GetUiColor;
+        _getUiFontCallback ??= UiKit.GetUiFont;
+        unsafe { _setPanelOpenCallback ??= UiKit.SetPanelOpen; }
 
         _api.Version = PluginContractVersion.Current;
         _api.LogFn = Marshal.GetFunctionPointerForDelegate(_logCallback);
@@ -3322,6 +3328,9 @@ internal static partial class PluginManager
         _api.GetLastConfirmationFn = Marshal.GetFunctionPointerForDelegate(_getLastConfirmationCallback);
         _api.GetServerStateJsonFn = Marshal.GetFunctionPointerForDelegate(_getServerStateJsonCallback);
         _api.GetWieldedItemsFn = Marshal.GetFunctionPointerForDelegate(_getWieldedItemsCallback);
+        _api.GetUiColorFn = Marshal.GetFunctionPointerForDelegate(_getUiColorCallback);
+        _api.GetUiFontFn = Marshal.GetFunctionPointerForDelegate(_getUiFontCallback);
+        _api.SetPanelOpenFn = Marshal.GetFunctionPointerForDelegate(_setPanelOpenCallback);
         RouteApiThroughLoader();
     }
 

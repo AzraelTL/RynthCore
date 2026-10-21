@@ -1,20 +1,17 @@
 // ============================================================================
 //  RynthCore.Engine - UI/Data/CharactersData.cs
 //  Your other characters (the other RynthCore clients on this PC, through the
-//  RynthNet plugin) for the Characters face: vitals, where they are from you,
-//  what they are doing. UtilityBelt's NetworkUI, engine side.
+//  RynthNet plugin) for the World Map's and Mini Map's other-characters layer.
+//  The Characters window itself is RynthNet's own since 2026-10-21 (it draws it,
+//  with its own copy of this logic); this goes when the world map moves to its
+//  plugin (docs/PLUGIN_WINDOWS.md).
 //
 //  CharactersSource polls RynthNet's RynthPluginGetSnapshotJson twice a second
-//  while the face is open (RynthNet rebuilds it twice a second; per-thread
+//  while a map shows the layer (RynthNet rebuilds it twice a second; per-thread
 //  buffer, so the hub thread may call it). It adds this client's own pose and
 //  vitals (snapshots, no AC calls) and, for a character this client can see,
 //  its object position (fresher than the status, which comes every second).
 //  The logic (parse, distance, state, order) is CharactersModel.
-//
-//  CharactersCommands: the right-click menu's actions, as /rn commands queued
-//  into RynthNet (RynthPluginApplyRemoteCommand("rn", ...), run on its tick):
-//  "/rn tell <name>, <command>" (the receiving client's command policy decides,
-//  and a refusal comes back as a chat line) and "/rn followme".
 // ============================================================================
 
 using System;
@@ -321,40 +318,4 @@ internal sealed unsafe class CharactersSource : UiSource<CharactersView>
         _lastSnap = null;
         ClearSnapshot();
     }
-}
-
-/// <summary>The Characters face's right-click actions, sent through RynthNet's /rn.</summary>
-internal static unsafe class CharactersCommands
-{
-    private static delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void> _apply;
-
-    static CharactersCommands()
-    {
-        PluginManager.PluginsUnloaded += () => _apply = null;
-    }
-
-    /// <summary>Runs <paramref name="command"/> on <paramref name="name"/>'s client ("/rn tell name, command").</summary>
-    public static void Tell(string name, string command)
-    {
-        if (name.Length == 0 || command.Length == 0) return;
-        Rn("tell " + name + ", " + command);
-    }
-
-    /// <summary>"/rn followme": every other client follows this character.</summary>
-    public static void FollowMeAll() => Rn("followme");
-
-    private static void Rn(string value) => UiDataHub.Post("Characters /rn " + value, () =>
-    {
-        if (_apply == null)
-            _apply = (delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void>)PluginExportBinder.Resolve(CharactersSource.PluginName, "RynthPluginApplyRemoteCommand");
-        if (_apply == null) return;
-        IntPtr a = Marshal.StringToHGlobalAnsi("rn");
-        IntPtr v = Marshal.StringToHGlobalAnsi(value);
-        try { _apply(a, v); }
-        finally
-        {
-            Marshal.FreeHGlobal(a);
-            Marshal.FreeHGlobal(v);
-        }
-    });
 }

@@ -1193,9 +1193,8 @@ public static class EntryPoint
                     ImGuiBackend.Panels.RynthNavFace.Register();
                 if (HasPluginDll("RynthCore.Plugin.RynthNav.dll"))
                     ImGuiBackend.Panels.WorldMapFace.Register();
-                // Characters (your other RynthCore clients, through RynthNet): only with RynthNet installed.
-                if (HasPluginDll("RynthCore.Plugin.RynthNet.dll"))
-                    ImGuiBackend.Panels.CharactersFace.Register();
+                // Characters is RynthNet's own window since 2026-10-21: its manifest declares it and the
+                // engine hosts it (UI/Sections/PluginWindows.cs, docs/PLUGIN_WINDOWS.md).
                 // The ILT section (Infinite Leaftide): its faces exist only with RynthILT installed
                 // (Bounties, Guardian), and the bar's ILT button shows them only on ILT with RynthILT
                 // loaded (IltInfo; IltStatusSource asks RynthILT once a second).
